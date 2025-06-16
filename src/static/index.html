@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User API Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-4">
+                        <h1 class="text-2xl font-bold text-gray-900">User API Dashboard</h1>
+                        <p class="text-sm text-gray-500">Manage and test user operations</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
+                        API Connected
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <!-- Stats Overview -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Total Users</dt>
+                            <dd class="text-lg font-medium text-gray-900" id="total-users">-</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Created Today</dt>
+                            <dd class="text-lg font-medium text-gray-900">0</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Updated Today</dt>
+                            <dd class="text-lg font-medium text-gray-900">0</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-red-500 rounded-md flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Deleted Today</dt>
+                            <dd class="text-lg font-medium text-gray-900">0</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Operations Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Get All Users -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900 flex items-center">
+                        <span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded mr-3">GET</span>
+                        Get All Users
+                    </h3>
+                    <p class="mt-1 text-sm text-gray-500">Retrieve all users from the database</p>
+                </div>
+                <div class="px-6 py-4">
+                    <button onclick="getUsers()" class="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out flex items-center justify-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                        </svg>
+                        Fetch Users
+                    </button>
+                    <div class="mt-4">
+                        <pre id="get-users-result" class="bg-gray-50 border border-gray-200 rounded-md p-3 text-sm text-gray-700 max-h-40 overflow-y-auto whitespace-pre-wrap"></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Create User -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900 flex items-center">
+                        <span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded mr-3">POST</span>
+                        Create User
+                    </h3>
+                    <p class="mt-1 text-sm text-gray-500">Add a new user to the database</p>
+                </div>
+                <div class="px-6 py-4 space-y-4">
+                    <div>
+                        <label for="create-username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                        <input type="text" id="create-username" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="Enter username">
+                    </div>
+                    <div>
+                        <label for="create-email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                        <input type="email" id="create-email" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="Enter email">
+                    </div>
+                    <button onclick="createUser()" class="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out flex items-center justify-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                        </svg>
+                        Create User
+                    </button>
+                    <div class="mt-4">
+                        <pre id="create-user-result" class="bg-gray-50 border border-gray-200 rounded-md p-3 text-sm text-gray-700 max-h-40 overflow-y-auto whitespace-pre-wrap"></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Get Single User -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900 flex items-center">
+                        <span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded mr-3">GET</span>
+                        Get Single User
+                    </h3>
+                    <p class="mt-1 text-sm text-gray-500">Retrieve a specific user by ID</p>
+                </div>
+                <div class="px-6 py-4 space-y-4">
+                    <div>
+                        <label for="get-user-id" class="block text-sm font-medium text-gray-700 mb-1">User ID</label>
+                        <input type="number" id="get-user-id" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="Enter user ID">
+                    </div>
+                    <button onclick="getUser()" class="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out flex items-center justify-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16l2.879-2.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242zM21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        Find User
+                    </button>
+                    <div class="mt-4">
+                        <pre id="get-user-result" class="bg-gray-50 border border-gray-200 rounded-md p-3 text-sm text-gray-700 max-h-40 overflow-y-auto whitespace-pre-wrap"></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Update User -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900 flex items-center">
+                        <span class="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded mr-3">PUT</span>
+                        Update User
+                    </h3>
+                    <p class="mt-1 text-sm text-gray-500">Modify an existing user's information</p>
+                </div>
+                <div class="px-6 py-4 space-y-4">
+                    <div>
+                        <label for="update-user-id" class="block text-sm font-medium text-gray-700 mb-1">User ID</label>
+                        <input type="number" id="update-user-id" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="Enter user ID">
+                    </div>
+                    <div>
+                        <label for="update-username" class="block text-sm font-medium text-gray-700 mb-1">New Username</label>
+                        <input type="text" id="update-username" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="Enter new username">
+                    </div>
+                    <div>
+                        <label for="update-email" class="block text-sm font-medium text-gray-700 mb-1">New Email</label>
+                        <input type="email" id="update-email" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="Enter new email">
+                    </div>
+                    <button onclick="updateUser()" class="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out flex items-center justify-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                        </svg>
+                        Update User
+                    </button>
+                    <div class="mt-4">
+                        <pre id="update-user-result" class="bg-gray-50 border border-gray-200 rounded-md p-3 text-sm text-gray-700 max-h-40 overflow-y-auto whitespace-pre-wrap"></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Delete User -->
+            <div class="bg-white rounded-lg shadow lg:col-span-2">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900 flex items-center">
+                        <span class="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded mr-3">DELETE</span>
+                        Delete User
+                    </h3>
+                    <p class="mt-1 text-sm text-gray-500">Permanently remove a user from the database</p>
+                </div>
+                <div class="px-6 py-4">
+                    <div class="max-w-md space-y-4">
+                        <div>
+                            <label for="delete-user-id" class="block text-sm font-medium text-gray-700 mb-1">User ID</label>
+                            <input type="number" id="delete-user-id" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="Enter user ID">
+                        </div>
+                        <button onclick="deleteUser()" class="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out flex items-center justify-center">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                            </svg>
+                            Delete User
+                        </button>
+                    </div>
+                    <div class="mt-4">
+                        <pre id="delete-user-result" class="bg-gray-50 border border-gray-200 rounded-md p-3 text-sm text-gray-700 max-h-40 overflow-y-auto whitespace-pre-wrap"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 mt-12">
+        <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center">
+                <div class="text-sm text-gray-500">
+                    © 2024 User API Dashboard. Built with Tailwind CSS.
+                </div>
+                <div class="flex space-x-6">
+                    <a href="#" class="text-sm text-gray-500 hover:text-gray-900">Documentation</a>
+                    <a href="#" class="text-sm text-gray-500 hover:text-gray-900">API Reference</a>
+                    <a href="#" class="text-sm text-gray-500 hover:text-gray-900">Support</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        const API_BASE_URL = '/api/users';
+
+        // Helper function to display results
+        function displayResult(elementId, data) {
+            const element = document.getElementById(elementId);
+            element.textContent = JSON.stringify(data, null, 2);
+            element.className = element.className.replace('text-red-600', 'text-gray-700');
+        }
+
+        // Helper function to display errors
+        function displayError(elementId, error) {
+            const element = document.getElementById(elementId);
+            element.textContent = `Error: ${error.message || error}`;
+            element.className = element.className.replace('text-gray-700', 'text-red-600');
+        }
+
+        // Update total users count
+        function updateUserCount(count) {
+            document.getElementById('total-users').textContent = count || '-';
+        }
+
+        // GET /users
+        async function getUsers() {
+            const resultElementId = 'get-users-result';
+            try {
+                const response = await fetch(API_BASE_URL);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                displayResult(resultElementId, data);
+                // Update user count if data is an array
+                if (Array.isArray(data)) {
+                    updateUserCount(data.length);
+                }
+            } catch (error) {
+                displayError(resultElementId, error);
+            }
+        }
+
+        // POST /users
+        async function createUser() {
+            const resultElementId = 'create-user-result';
+            const username = document.getElementById('create-username').value;
+            const email = document.getElementById('create-email').value;
+            if (!username || !email) {
+                displayError(resultElementId, 'Username and email cannot be empty');
+                return;
+            }
+            try {
+                const response = await fetch(API_BASE_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, email })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message || `HTTP error! status: ${response.status}`);
+                displayResult(resultElementId, data);
+                // Clear input fields
+                document.getElementById('create-username').value = '';
+                document.getElementById('create-email').value = '';
+                // Refresh user count
+                getUsers();
+            } catch (error) {
+                displayError(resultElementId, error);
+            }
+        }
+
+        // GET /users/<id>
+        async function getUser() {
+            const resultElementId = 'get-user-result';
+            const userId = document.getElementById('get-user-id').value;
+            if (!userId) {
+                displayError(resultElementId, 'User ID cannot be empty');
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE_URL}/${userId}`);
+                if (response.status === 404) throw new Error('User not found');
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                displayResult(resultElementId, data);
+            } catch (error) {
+                displayError(resultElementId, error);
+            }
+        }
+
+        // PUT /users/<id>
+        async function updateUser() {
+            const resultElementId = 'update-user-result';
+            const userId = document.getElementById('update-user-id').value;
+            const username = document.getElementById('update-username').value;
+            const email = document.getElementById('update-email').value;
+            if (!userId) {
+                displayError(resultElementId, 'User ID cannot be empty');
+                return;
+            }
+            const updateData = {};
+            if (username) updateData.username = username;
+            if (email) updateData.email = email;
+            if (Object.keys(updateData).length === 0) {
+                displayError(resultElementId, 'Please enter a username or email to update');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/${userId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updateData)
+                });
+                if (response.status === 404) throw new Error('User not found');
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message || `HTTP error! status: ${response.status}`);
+                displayResult(resultElementId, data);
+                // Clear input fields
+                document.getElementById('update-username').value = '';
+                document.getElementById('update-email').value = '';
+            } catch (error) {
+                displayError(resultElementId, error);
+            }
+        }
+
+        // DELETE /users/<id>
+        async function deleteUser() {
+            const resultElementId = 'delete-user-result';
+            const userId = document.getElementById('delete-user-id').value;
+            if (!userId) {
+                displayError(resultElementId, 'User ID cannot be empty');
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE_URL}/${userId}`, {
+                    method: 'DELETE'
+                });
+                if (response.status === 404) throw new Error('User not found');
+                if (!response.ok && response.status !== 204) throw new Error(`HTTP error! status: ${response.status}`);
+                // 204 No Content indicates success
+                if (response.status === 204) {
+                    displayResult(resultElementId, { message: `User ID ${userId} has been successfully deleted` });
+                } else {
+                    const data = await response.text();
+                    displayResult(resultElementId, data || { message: `Deletion successful, status code: ${response.status}` });
+                }
+                // Clear input field
+                document.getElementById('delete-user-id').value = '';
+                // Refresh user count
+                getUsers();
+            } catch (error) {
+                displayError(resultElementId, error);
+            }
+        }
+
+        // Load users on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            getUsers();
+        });
+    </script>
+</body>
+</html>

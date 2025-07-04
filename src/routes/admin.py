@@ -4,6 +4,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 from cryptography.fernet import Fernet
 import os
+from werkzeug.utils import secure_filename
+from flask import current_app # To access app.config
+import json
 
 from src.models.database import db, AdminUser, AIConfiguration, BusinessPlanTemplate, CompanyData
 
@@ -30,9 +33,10 @@ def login():
         admin.last_login = datetime.utcnow()
         db.session.commit()
         
-        # Création du token JWT
+        # Création du token JWT avec une identité structurée
+        identity = {'user_id': admin.id, 'username': admin.username}
         access_token = create_access_token(
-            identity=admin.id,
+            identity=identity,
             expires_delta=timedelta(hours=24)
         )
         
@@ -142,7 +146,12 @@ def get_business_plan_templates():
 @jwt_required()
 def create_business_plan_template():
     """Créer un nouveau template de business plan"""
-    admin_id = get_jwt_identity()
+    jwt_identity = get_jwt_identity()
+    admin_id = jwt_identity.get('user_id')
+    
+    if not admin_id:
+        return jsonify({'error': 'Identité administrateur invalide dans le token'}), 401
+        
     data = request.get_json()
     
     required_fields = ['name', 'template_content']
@@ -189,6 +198,102 @@ def update_business_plan_template(template_id):
     db.session.commit()
     
     return jsonify({'message': 'Template mis à jour', 'template': template.to_dict()}), 200
+
+@admin_bp.route('/business-plan-templates/upload', methods=['POST'])
+@jwt_required()
+def upload_business_plan_template():
+    """Uploader un nouveau template de business plan"""
+    
+    def allowed_file(filename):
+        """Vérifie si l'extension du fichier est autorisée."""
+        allowed_extensions = current_app.config.get('ALLOWED_EXTENSIONS')
+        if not allowed_extensions:
+            # Fallback au cas où la configuration ne serait pas chargée, même si c'est peu probable ici.
+            allowed_extensions = {'pdf', 'xls', 'xlsx', 'doc', 'docx', 'png', 'webp', 'jpg', 'jpeg', 'txt'}
+        return '.' in filename and \
+               filename.rsplit('.', 1)[1].lower() in allowed_extensions
+
+    try:
+        jwt_identity = get_jwt_identity()
+        admin_id = jwt_identity.get('user_id')
+        
+        if not admin_id:
+            return jsonify({'error': 'Identité administrateur invalide dans le token'}), 401
+
+        print(f"Admin ID: {admin_id}")
+        print(f"Request form: {request.form}")
+        print(f"Request files: {request.files}")
+
+        if 'file' not in request.files:
+            print("Erreur: Aucun fichier fourni")
+            return jsonify({'error': 'Aucun fichier fourni'}), 400
+
+        file = request.files['file']
+        name = request.form.get('name')
+        description = request.form.get('description')
+        category = request.form.get('category')
+        variables = request.form.get('variables') # JSON string
+
+        print(f"Nom: {name}")
+        print(f"Description: {description}")
+        print(f"Catégorie: {category}")
+        print(f"Variables: {variables}")
+        print(f"Nom du fichier: {file.filename}")
+
+        if file.filename == '':
+            print("Erreur: Aucun fichier sélectionné")
+            return jsonify({'error': 'Aucun fichier sélectionné'}), 400
+            
+        if not name:
+            print("Erreur: Le nom du template est requis")
+            return jsonify({'error': 'Le nom du template est requis'}), 422
+
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+            print(f"Chemin du fichier: {file_path}")
+            file.save(file_path)
+
+            # Déterminer le type de fichier (extension)
+            file_type = filename.rsplit('.', 1)[1].lower()
+            print(f"Type de fichier: {file_type}")
+
+            template = BusinessPlanTemplate(
+                name=name,
+                description=description,
+                file_path=file_path,
+                file_type=file_type,
+                category=category,
+                created_by=admin_id
+            )
+
+            if variables:
+                try:
+                    template.set_variables(json.loads(variables))
+                except json.JSONDecodeError:
+                    print("Erreur: Format de variables invalide")
+                    return jsonify({'error': 'Format de variables invalide. Doit être un JSON valide.'}), 400
+
+            db.session.add(template)
+            db.session.commit()
+            print("Template ajouté avec succès à la base de données")
+
+            return jsonify({'message': 'Template de business plan uploadé avec succès', 'template': template.to_dict()}), 201
+        else:
+            allowed_extensions = current_app.config.get('ALLOWED_EXTENSIONS', [])
+            print(f"Erreur: Type de fichier non autorisé. Extensions autorisées: {allowed_extensions}")
+            return jsonify({'error': f'Type de fichier non autorisé. Extensions autorisées: {allowed_extensions}'}), 400
+    except Exception as e:
+        print(f"Exception lors de l'upload: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Erreur serveur: {str(e)}'}), 500
+
+@admin_bp.route('/business-plan-templates/public', methods=['GET'])
+def get_public_business_plan_templates():
+    """Récupérer tous les templates de business plans (route publique)"""
+    templates = BusinessPlanTemplate.query.filter_by(is_active=True).all()
+    return jsonify([template.to_dict() for template in templates]), 200
 
 @admin_bp.route('/company-data', methods=['GET'])
 @jwt_required()

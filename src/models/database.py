@@ -1,6 +1,8 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import json
+import sqlite3
+import os
 
 db = SQLAlchemy()
 
@@ -56,7 +58,9 @@ class BusinessPlanTemplate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
-    template_content = db.Column(db.Text, nullable=False)  # JSON ou HTML template
+    template_content = db.Column(db.Text)  # JSON ou HTML template (now optional as file upload)
+    file_path = db.Column(db.String(500))  # New: Path to the uploaded file
+    file_type = db.Column(db.String(50))   # New: MIME type or file extension
     variables = db.Column(db.Text)  # JSON - Liste des variables requises
     category = db.Column(db.String(100))
     is_active = db.Column(db.Boolean, default=True)
@@ -84,6 +88,8 @@ class BusinessPlanTemplate(db.Model):
             'name': self.name,
             'description': self.description,
             'template_content': self.template_content,
+            'file_path': self.file_path,
+            'file_type': self.file_type,
             'variables': self.get_variables(),
             'category': self.category,
             'is_active': self.is_active,
@@ -370,4 +376,21 @@ class WebhookLog(db.Model):
             'error_message': self.error_message,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
+
+def get_db_connection():
+    """Fonction pour obtenir une connexion directe à la base de données SQLite."""
+    try:
+        # Utiliser le même chemin que dans main.py
+        from pathlib import Path
+        project_root = Path(__file__).parent.parent.parent.resolve()
+        db_dir = project_root / 'database'
+        db_path = db_dir / 'app.db'
+        
+        # S'assurer que le répertoire existe
+        db_dir.mkdir(parents=True, exist_ok=True)
+        
+        return sqlite3.connect(str(db_path))
+    except Exception as e:
+        print(f"Erreur connexion base de données: {str(e)}")
+        raise
 

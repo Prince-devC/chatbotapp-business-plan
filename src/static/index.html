@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User API Dashboard</title>
+    <title>User API Dashboard - React</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -16,429 +16,1601 @@
                             600: '#2563eb',
                             700: '#1d4ed8',
                         }
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.5s ease-in-out',
+                        'slide-up': 'slideUp 0.3s ease-out',
+                        'pulse-slow': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'bounce-in': 'bounceIn 0.6s ease-out',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        slideUp: {
+                            '0%': { transform: 'translateY(10px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' },
+                        },
+                        bounceIn: {
+                            '0%': { transform: 'scale(0.3)', opacity: '0' },
+                            '50%': { transform: 'scale(1.05)' },
+                            '70%': { transform: 'scale(0.9)' },
+                            '100%': { transform: 'scale(1)', opacity: '1' },
+                        }
+                    },
+                    screens: {
+                        'xs': '475px',
                     }
                 }
             }
         }
     </script>
+    <!-- React CDN -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel for JSX transformation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- PDF.js pour la prévisualisation des PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- Mammoth.js pour la prévisualisation des documents Word -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js"></script>
+    <!-- SheetJS pour Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- JSZip pour les archives -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .line-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+    </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
-    <!-- Header -->
-    <header class="bg-white shadow-sm border-b border-gray-200">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between items-center py-6">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center">
-                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
+<body class="bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useMemo } = React;
+
+        // Configuration API
+        const API_CONFIG = {
+            BASE_URL: `${window.location.origin}/api/users`,
+            ADMIN_BASE_URL: `${window.location.origin}/api/admin`,
+            getAuthToken: () => localStorage.getItem('admin_jwt_token')
+        };
+
+        // Hook personnalisé pour les appels API
+        const useApi = () => {
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+
+            const apiCall = useCallback(async (url, options = {}) => {
+                setLoading(true);
+                setError(null);
+                try {
+                    console.log(`Appel API: ${url}`, options);
+                    const response = await fetch(url, options);
+                    const data = await response.json();
+                    
+                    console.log(`Réponse API (${response.status}):`, data);
+                    
+                    if (!response.ok) {
+                        const errorMessage = data.error || data.message || `HTTP error! status: ${response.status}`;
+                        console.error(`Erreur API: ${errorMessage}`);
+                        throw new Error(errorMessage);
+                    }
+                    
+                    setLoading(false);
+                    return data;
+                } catch (err) {
+                    console.error(`Exception API: ${err.message}`);
+                    setError(err.message);
+                    setLoading(false);
+                    throw err;
+                }
+            }, []);
+
+            return { apiCall, loading, error };
+        };
+
+        // Composant Header
+        const Header = ({ totalUsers, apiStatus }) => (
+            <header className="bg-white shadow-lg border-b border-gray-200 backdrop-blur-sm bg-white/95 sticky top-0 z-50">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center py-4 sm:py-6 space-y-4 sm:space-y-0">
+                        <div className="flex items-center w-full sm:w-auto">
+                            <div className="flex-shrink-0">
+                                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-primary-500 to-primary-600 rounded-xl flex items-center justify-center shadow-lg">
+                                    <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
                             </svg>
                         </div>
                     </div>
-                    <div class="ml-4">
-                        <h1 class="text-2xl font-bold text-gray-900">User API Dashboard</h1>
-                        <p class="text-sm text-gray-500">Manage and test user operations</p>
+                            <div className="ml-3 sm:ml-4 flex-1">
+                                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                                    User API Dashboard
+                                </h1>
+                                <p className="text-xs sm:text-sm text-gray-500 mt-1">Gérez et testez les opérations utilisateur</p>
                     </div>
                 </div>
-                <div class="flex items-center space-x-4">
-                    <div class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
-                        API Connected
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 w-full sm:w-auto">
+                            <div className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm font-medium transition-all duration-300 ${
+                                apiStatus ? 'bg-green-100 text-green-800 shadow-green-100 shadow-md' : 'bg-red-100 text-red-800 shadow-red-100 shadow-md'
+                            }`}>
+                                <div className="flex items-center space-x-2">
+                                    <div className={`w-2 h-2 rounded-full ${apiStatus ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                                    <span className="hidden sm:inline">{apiStatus ? 'API Connectée' : 'API Déconnectée'}</span>
+                                    <span className="sm:hidden">{apiStatus ? 'Connecté' : 'Déconnecté'}</span>
+                    </div>
+                </div>
+                            <div className="text-xs sm:text-sm text-gray-600">
+                                <span className="font-medium">{totalUsers}</span> utilisateur{totalUsers !== 1 ? 's' : ''}
                     </div>
                 </div>
             </div>
         </div>
     </header>
+        );
 
-    <!-- Main Content -->
-    <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        <!-- Stats Overview -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div class="bg-white rounded-lg shadow p-6">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
-                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                            </svg>
+        // Composant StatsCard
+        const StatsCard = ({ title, value, icon, color, trend }) => (
+            <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-100">
+                <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                        <div className={`w-10 h-10 sm:w-12 sm:h-12 ${color} rounded-xl flex items-center justify-center shadow-lg`}>
+                            {React.cloneElement(icon, { className: "w-5 h-5 sm:w-6 sm:h-6 text-white" })}
                         </div>
                     </div>
-                    <div class="ml-5 w-0 flex-1">
+                    <div className="ml-3 sm:ml-5 w-0 flex-1">
                         <dl>
-                            <dt class="text-sm font-medium text-gray-500 truncate">Total Users</dt>
-                            <dd class="text-lg font-medium text-gray-900" id="total-users">-</dd>
+                            <dt className="text-xs sm:text-sm font-medium text-gray-500 truncate">{title}</dt>
+                            <dd className="flex items-baseline">
+                                <div className="text-lg sm:text-2xl font-bold text-gray-900">{value}</div>
+                                {trend && (
+                                    <div className={`ml-2 flex items-baseline text-xs sm:text-sm font-semibold ${
+                                        trend > 0 ? 'text-green-600' : trend < 0 ? 'text-red-600' : 'text-gray-500'
+                                    }`}>
+                                        {trend > 0 ? '+' : ''}{trend}%
+                                    </div>
+                                )}
+                            </dd>
                         </dl>
                     </div>
                 </div>
             </div>
-            <div class="bg-white rounded-lg shadow p-6">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
-                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                            </svg>
+        );
+
+        // Composant LoadingSpinner
+        const LoadingSpinner = ({ size = 'md' }) => {
+            const sizeClasses = {
+                sm: 'w-4 h-4',
+                md: 'w-6 h-6',
+                lg: 'w-8 h-8'
+            };
+
+            return (
+                <div className={`${sizeClasses[size]} animate-spin rounded-full border-2 border-gray-300 border-t-primary-600`}></div>
+            );
+        };
+
+        // Composant Button
+        const Button = ({ children, onClick, variant = 'primary', size = 'md', loading = false, disabled = false, className = '' }) => {
+            const baseClasses = 'font-medium rounded-lg transition-all duration-200 flex items-center justify-center focus:outline-none focus:ring-4 transform active:scale-95';
+            
+            const variants = {
+                primary: 'bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white shadow-lg hover:shadow-xl focus:ring-primary-300',
+                secondary: 'bg-gray-100 hover:bg-gray-200 text-gray-900 focus:ring-gray-300',
+                success: 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-lg hover:shadow-xl focus:ring-green-300',
+                warning: 'bg-gradient-to-r from-yellow-600 to-yellow-700 hover:from-yellow-700 hover:to-yellow-800 text-white shadow-lg hover:shadow-xl focus:ring-yellow-300',
+                danger: 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white shadow-lg hover:shadow-xl focus:ring-red-300',
+                purple: 'bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white shadow-lg hover:shadow-xl focus:ring-purple-300'
+            };
+
+            const sizes = {
+                sm: 'px-3 py-2 text-sm',
+                md: 'px-4 py-2 text-sm',
+                lg: 'px-6 py-3 text-base'
+            };
+
+            return (
+                <button
+                    onClick={onClick}
+                    disabled={disabled || loading}
+                    className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${disabled || loading ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
+                >
+                    {loading ? <LoadingSpinner size="sm" /> : children}
+                </button>
+            );
+        };
+
+        // Composant Input
+        const Input = ({ label, type = 'text', value, onChange, placeholder, required = false, error }) => (
+            <div className="space-y-1">
+                {label && (
+                    <label className="block text-sm font-medium text-gray-700">
+                        {label} {required && <span className="text-red-500">*</span>}
+                    </label>
+                )}
+                <input
+                    type={type}
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    placeholder={placeholder}
+                    className={`w-full px-4 py-2 border rounded-lg shadow-sm transition-all duration-200 focus:outline-none focus:ring-4 ${
+                        error 
+                            ? 'border-red-300 focus:border-red-500 focus:ring-red-200' 
+                            : 'border-gray-300 focus:border-primary-500 focus:ring-primary-200'
+                    }`}
+                />
+                {error && <p className="text-sm text-red-600">{error}</p>}
                         </div>
+        );
+
+        // Composant Textarea
+        const Textarea = ({ label, value, onChange, placeholder, rows = 3, error }) => (
+            <div className="space-y-1">
+                {label && <label className="block text-sm font-medium text-gray-700">{label}</label>}
+                <textarea
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    placeholder={placeholder}
+                    rows={rows}
+                    className={`w-full px-4 py-2 border rounded-lg shadow-sm transition-all duration-200 focus:outline-none focus:ring-4 resize-none ${
+                        error 
+                            ? 'border-red-300 focus:border-red-500 focus:ring-red-200' 
+                            : 'border-gray-300 focus:border-primary-500 focus:ring-primary-200'
+                    }`}
+                />
+                {error && <p className="text-sm text-red-600">{error}</p>}
                     </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 truncate">Created Today</dt>
-                            <dd class="text-lg font-medium text-gray-900">0</dd>
-                        </dl>
+        );
+
+        // Composant Card
+        const Card = ({ title, subtitle, children, className = '' }) => (
+            <div className={`bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 ${className}`}>
+                {(title || subtitle) && (
+                    <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                        {title && <h3 className="text-lg font-semibold text-gray-900 flex items-center">{title}</h3>}
+                        {subtitle && <p className="mt-1 text-sm text-gray-600">{subtitle}</p>}
                     </div>
+                )}
+                <div className="p-6">
+                    {children}
                 </div>
             </div>
-            <div class="bg-white rounded-lg shadow p-6">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
-                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 truncate">Updated Today</dt>
-                            <dd class="text-lg font-medium text-gray-900">0</dd>
-                        </dl>
-                    </div>
-                </div>
-            </div>
-            <div class="bg-white rounded-lg shadow p-6">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-8 h-8 bg-red-500 rounded-md flex items-center justify-center">
-                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 truncate">Deleted Today</dt>
-                            <dd class="text-lg font-medium text-gray-900">0</dd>
-                        </dl>
-                    </div>
-                </div>
-            </div>
-        </div>
+        );
 
-        <!-- API Operations Grid -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <!-- Get All Users -->
-            <div class="bg-white rounded-lg shadow">
-                <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900 flex items-center">
-                        <span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded mr-3">GET</span>
-                        Get All Users
-                    </h3>
-                    <p class="mt-1 text-sm text-gray-500">Retrieve all users from the database</p>
-                </div>
-                <div class="px-6 py-4">
-                    <button onclick="getUsers()" class="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out flex items-center justify-center">
-                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
-                        </svg>
-                        Fetch Users
-                    </button>
-                    <div class="mt-4">
-                        <pre id="get-users-result" class="bg-gray-50 border border-gray-200 rounded-md p-3 text-sm text-gray-700 max-h-40 overflow-y-auto whitespace-pre-wrap"></pre>
+        // Composant ResultDisplay
+        const ResultDisplay = ({ data, error, loading }) => {
+            if (loading) {
+                return (
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex items-center justify-center">
+                        <LoadingSpinner />
+                        <span className="ml-2 text-gray-600">Chargement...</span>
                     </div>
-                </div>
-            </div>
-
-            <!-- Create User -->
-            <div class="bg-white rounded-lg shadow">
-                <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900 flex items-center">
-                        <span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded mr-3">POST</span>
-                        Create User
-                    </h3>
-                    <p class="mt-1 text-sm text-gray-500">Add a new user to the database</p>
-                </div>
-                <div class="px-6 py-4 space-y-4">
-                    <div>
-                        <label for="create-username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                        <input type="text" id="create-username" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="Enter username">
-                    </div>
-                    <div>
-                        <label for="create-email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                        <input type="email" id="create-email" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="Enter email">
-                    </div>
-                    <button onclick="createUser()" class="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out flex items-center justify-center">
-                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                        </svg>
-                        Create User
-                    </button>
-                    <div class="mt-4">
-                        <pre id="create-user-result" class="bg-gray-50 border border-gray-200 rounded-md p-3 text-sm text-gray-700 max-h-40 overflow-y-auto whitespace-pre-wrap"></pre>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Get Single User -->
-            <div class="bg-white rounded-lg shadow">
-                <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900 flex items-center">
-                        <span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded mr-3">GET</span>
-                        Get Single User
-                    </h3>
-                    <p class="mt-1 text-sm text-gray-500">Retrieve a specific user by ID</p>
-                </div>
-                <div class="px-6 py-4 space-y-4">
-                    <div>
-                        <label for="get-user-id" class="block text-sm font-medium text-gray-700 mb-1">User ID</label>
-                        <input type="number" id="get-user-id" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="Enter user ID">
-                    </div>
-                    <button onclick="getUser()" class="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out flex items-center justify-center">
-                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16l2.879-2.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242zM21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
-                        Find User
-                    </button>
-                    <div class="mt-4">
-                        <pre id="get-user-result" class="bg-gray-50 border border-gray-200 rounded-md p-3 text-sm text-gray-700 max-h-40 overflow-y-auto whitespace-pre-wrap"></pre>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Update User -->
-            <div class="bg-white rounded-lg shadow">
-                <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900 flex items-center">
-                        <span class="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded mr-3">PUT</span>
-                        Update User
-                    </h3>
-                    <p class="mt-1 text-sm text-gray-500">Modify an existing user's information</p>
-                </div>
-                <div class="px-6 py-4 space-y-4">
-                    <div>
-                        <label for="update-user-id" class="block text-sm font-medium text-gray-700 mb-1">User ID</label>
-                        <input type="number" id="update-user-id" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="Enter user ID">
-                    </div>
-                    <div>
-                        <label for="update-username" class="block text-sm font-medium text-gray-700 mb-1">New Username</label>
-                        <input type="text" id="update-username" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="Enter new username">
-                    </div>
-                    <div>
-                        <label for="update-email" class="block text-sm font-medium text-gray-700 mb-1">New Email</label>
-                        <input type="email" id="update-email" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="Enter new email">
-                    </div>
-                    <button onclick="updateUser()" class="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out flex items-center justify-center">
-                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-                        </svg>
-                        Update User
-                    </button>
-                    <div class="mt-4">
-                        <pre id="update-user-result" class="bg-gray-50 border border-gray-200 rounded-md p-3 text-sm text-gray-700 max-h-40 overflow-y-auto whitespace-pre-wrap"></pre>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Delete User -->
-            <div class="bg-white rounded-lg shadow lg:col-span-2">
-                <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900 flex items-center">
-                        <span class="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded mr-3">DELETE</span>
-                        Delete User
-                    </h3>
-                    <p class="mt-1 text-sm text-gray-500">Permanently remove a user from the database</p>
-                </div>
-                <div class="px-6 py-4">
-                    <div class="max-w-md space-y-4">
-                        <div>
-                            <label for="delete-user-id" class="block text-sm font-medium text-gray-700 mb-1">User ID</label>
-                            <input type="number" id="delete-user-id" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" placeholder="Enter user ID">
-                        </div>
-                        <button onclick="deleteUser()" class="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out flex items-center justify-center">
-                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                            </svg>
-                            Delete User
-                        </button>
-                    </div>
-                    <div class="mt-4">
-                        <pre id="delete-user-result" class="bg-gray-50 border border-gray-200 rounded-md p-3 text-sm text-gray-700 max-h-40 overflow-y-auto whitespace-pre-wrap"></pre>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </main>
-
-    <!-- Footer -->
-    <footer class="bg-white border-t border-gray-200 mt-12">
-        <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between items-center">
-                <div class="text-sm text-gray-500">
-                    © 2024 User API Dashboard. Built with Tailwind CSS.
-                </div>
-                <div class="flex space-x-6">
-                    <a href="#" class="text-sm text-gray-500 hover:text-gray-900">Documentation</a>
-                    <a href="#" class="text-sm text-gray-500 hover:text-gray-900">API Reference</a>
-                    <a href="#" class="text-sm text-gray-500 hover:text-gray-900">Support</a>
-                </div>
-            </div>
-        </div>
-    </footer>
-
-    <script>
-        const API_BASE_URL = '/api/users';
-
-        // Helper function to display results
-        function displayResult(elementId, data) {
-            const element = document.getElementById(elementId);
-            element.textContent = JSON.stringify(data, null, 2);
-            element.className = element.className.replace('text-red-600', 'text-gray-700');
-        }
-
-        // Helper function to display errors
-        function displayError(elementId, error) {
-            const element = document.getElementById(elementId);
-            element.textContent = `Error: ${error.message || error}`;
-            element.className = element.className.replace('text-gray-700', 'text-red-600');
-        }
-
-        // Update total users count
-        function updateUserCount(count) {
-            document.getElementById('total-users').textContent = count || '-';
-        }
-
-        // GET /users
-        async function getUsers() {
-            const resultElementId = 'get-users-result';
-            try {
-                const response = await fetch(API_BASE_URL);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const data = await response.json();
-                displayResult(resultElementId, data);
-                // Update user count if data is an array
-                if (Array.isArray(data)) {
-                    updateUserCount(data.length);
-                }
-            } catch (error) {
-                displayError(resultElementId, error);
+                );
             }
-        }
 
-        // POST /users
-        async function createUser() {
-            const resultElementId = 'create-user-result';
-            const username = document.getElementById('create-username').value;
-            const email = document.getElementById('create-email').value;
-            if (!username || !email) {
-                displayError(resultElementId, 'Username and email cannot be empty');
+            if (error) {
+                return (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                        <div className="flex items-center">
+                            <svg className="w-5 h-5 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <span className="text-red-800 font-medium">Erreur: {error}</span>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (data) {
+                return (
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <pre className="text-sm text-gray-700 whitespace-pre-wrap overflow-auto max-h-40">
+                            {JSON.stringify(data, null, 2)}
+                        </pre>
+                    </div>
+                );
+            }
+
+            return null;
+        };
+
+        // Composant UserTable
+        const UserTable = ({ users, onEdit, onDelete, loading }) => {
+            if (loading) {
+                return (
+                    <div className="flex items-center justify-center py-8">
+                        <LoadingSpinner />
+                        <span className="ml-2 text-gray-600">Chargement des utilisateurs...</span>
+                </div>
+                );
+            }
+
+            if (!users || users.length === 0) {
+                return (
+                    <div className="text-center py-8">
+                        <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                        </svg>
+                        <p className="text-gray-500">Aucun utilisateur trouvé</p>
+            </div>
+                );
+            }
+
+            return (
+                <div className="overflow-x-auto">
+                    <table className="min-w-full bg-white border border-gray-200 rounded-lg">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="py-3 px-4 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                <th className="py-3 px-4 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom d'utilisateur</th>
+                                <th className="py-3 px-4 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                                <th className="py-3 px-4 border-b text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                            {users.map((user, index) => (
+                                <tr key={user.id} className="hover:bg-gray-50 transition-colors duration-200 animate-fade-in" style={{animationDelay: `${index * 0.1}s`}}>
+                                    <td className="py-3 px-4 text-sm text-gray-900">{user.id}</td>
+                                    <td className="py-3 px-4 text-sm text-gray-900 font-medium">{user.username}</td>
+                                    <td className="py-3 px-4 text-sm text-gray-600">{user.email}</td>
+                                    <td className="py-3 px-4 text-sm space-x-2">
+                                        <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={() => onEdit(user)}
+                                        >
+                                            Modifier
+                                        </Button>
+                                        <Button
+                                            variant="danger"
+                                            size="sm"
+                                            onClick={() => onDelete(user)}
+                                        >
+                                            Supprimer
+                                        </Button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        };
+
+        // Composant principal Dashboard
+        const Dashboard = () => {
+            const [users, setUsers] = useState([]);
+            const [totalUsers, setTotalUsers] = useState(0);
+            const [apiStatus, setApiStatus] = useState(true);
+            const [activeTab, setActiveTab] = useState('users');
+            const [uploadedTemplates, setUploadedTemplates] = useState([]);
+            const [loadingTemplates, setLoadingTemplates] = useState(false);
+            const [isAuthenticated, setIsAuthenticated] = useState(!!API_CONFIG.getAuthToken());
+            const [loginForm, setLoginForm] = useState({ username: 'admin', password: 'admin123' });
+            const [selectedTemplate, setSelectedTemplate] = useState(null);
+            const [showTemplateModal, setShowTemplateModal] = useState(false);
+
+            // États pour les formulaires
+            const [createForm, setCreateForm] = useState({ username: '', email: '' });
+            const [updateForm, setUpdateForm] = useState({ id: '', username: '', email: '' });
+            const [getUserForm, setGetUserForm] = useState({ id: '' });
+            const [deleteForm, setDeleteForm] = useState({ id: '' });
+            const [templateForm, setTemplateForm] = useState({
+                file: null,
+                name: '',
+                description: '',
+                category: '',
+                variables: ''
+            });
+
+            // États pour les résultats
+            const [results, setResults] = useState({
+                getUsers: null,
+                createUser: null,
+                getUser: null,
+                updateUser: null,
+                deleteUser: null,
+                uploadTemplate: null
+            });
+
+            const { apiCall, loading, error } = useApi();
+
+            // Charger les utilisateurs au démarrage
+            useEffect(() => {
+                fetchUsers();
+                fetchTemplates();
+            }, []);
+
+            const fetchUsers = async () => {
+                try {
+                    const data = await apiCall(API_CONFIG.BASE_URL);
+                    setUsers(Array.isArray(data) ? data : []);
+                    setTotalUsers(Array.isArray(data) ? data.length : 0);
+                    setResults(prev => ({ ...prev, getUsers: data }));
+                    setApiStatus(true);
+                } catch (err) {
+                    setApiStatus(false);
+                    setResults(prev => ({ ...prev, getUsers: null }));
+                }
+            };
+
+            const createUser = async () => {
+                if (!createForm.username || !createForm.email) {
+                    alert('Le nom d\'utilisateur et l\'email sont requis');
                 return;
             }
+
             try {
-                const response = await fetch(API_BASE_URL, {
+                    const data = await apiCall(API_CONFIG.BASE_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, email })
-                });
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.message || `HTTP error! status: ${response.status}`);
-                displayResult(resultElementId, data);
-                // Clear input fields
-                document.getElementById('create-username').value = '';
-                document.getElementById('create-email').value = '';
-                // Refresh user count
-                getUsers();
-            } catch (error) {
-                displayError(resultElementId, error);
-            }
-        }
+                        body: JSON.stringify(createForm)
+                    });
+                    
+                    setResults(prev => ({ ...prev, createUser: data }));
+                    setCreateForm({ username: '', email: '' });
+                    fetchUsers();
+                } catch (err) {
+                    setResults(prev => ({ ...prev, createUser: null }));
+                }
+            };
 
-        // GET /users/<id>
-        async function getUser() {
-            const resultElementId = 'get-user-result';
-            const userId = document.getElementById('get-user-id').value;
-            if (!userId) {
-                displayError(resultElementId, 'User ID cannot be empty');
+            const getUser = async () => {
+                if (!getUserForm.id) {
+                    alert('L\'ID utilisateur est requis');
                 return;
             }
-            try {
-                const response = await fetch(`${API_BASE_URL}/${userId}`);
-                if (response.status === 404) throw new Error('User not found');
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const data = await response.json();
-                displayResult(resultElementId, data);
-            } catch (error) {
-                displayError(resultElementId, error);
-            }
-        }
 
-        // PUT /users/<id>
-        async function updateUser() {
-            const resultElementId = 'update-user-result';
-            const userId = document.getElementById('update-user-id').value;
-            const username = document.getElementById('update-username').value;
-            const email = document.getElementById('update-email').value;
-            if (!userId) {
-                displayError(resultElementId, 'User ID cannot be empty');
+                try {
+                    const data = await apiCall(`${API_CONFIG.BASE_URL}/${getUserForm.id}`);
+                    setResults(prev => ({ ...prev, getUser: data }));
+                } catch (err) {
+                    setResults(prev => ({ ...prev, getUser: null }));
+                }
+            };
+
+            const updateUser = async () => {
+                if (!updateForm.id) {
+                    alert('L\'ID utilisateur est requis');
                 return;
             }
+
             const updateData = {};
-            if (username) updateData.username = username;
-            if (email) updateData.email = email;
+                if (updateForm.username) updateData.username = updateForm.username;
+                if (updateForm.email) updateData.email = updateForm.email;
+
             if (Object.keys(updateData).length === 0) {
-                displayError(resultElementId, 'Please enter a username or email to update');
+                    alert('Veuillez saisir un nom d\'utilisateur ou un email à mettre à jour');
                 return;
             }
 
             try {
-                const response = await fetch(`${API_BASE_URL}/${userId}`, {
+                    const data = await apiCall(`${API_CONFIG.BASE_URL}/${updateForm.id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(updateData)
                 });
-                if (response.status === 404) throw new Error('User not found');
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.message || `HTTP error! status: ${response.status}`);
-                displayResult(resultElementId, data);
-                // Clear input fields
-                document.getElementById('update-username').value = '';
-                document.getElementById('update-email').value = '';
-            } catch (error) {
-                displayError(resultElementId, error);
-            }
-        }
+                    
+                    setResults(prev => ({ ...prev, updateUser: data }));
+                    setUpdateForm({ id: '', username: '', email: '' });
+                    fetchUsers();
+                } catch (err) {
+                    setResults(prev => ({ ...prev, updateUser: null }));
+                }
+            };
 
-        // DELETE /users/<id>
-        async function deleteUser() {
-            const resultElementId = 'delete-user-result';
-            const userId = document.getElementById('delete-user-id').value;
-            if (!userId) {
-                displayError(resultElementId, 'User ID cannot be empty');
+            const deleteUser = async (userId = null) => {
+                const id = userId || deleteForm.id;
+                if (!id) {
+                    alert('L\'ID utilisateur est requis');
+                    return;
+                }
+
+                if (!confirm(`Êtes-vous sûr de vouloir supprimer l'utilisateur ID ${id}?`)) {
                 return;
             }
-            try {
-                const response = await fetch(`${API_BASE_URL}/${userId}`, {
-                    method: 'DELETE'
-                });
-                if (response.status === 404) throw new Error('User not found');
-                if (!response.ok && response.status !== 204) throw new Error(`HTTP error! status: ${response.status}`);
-                // 204 No Content indicates success
-                if (response.status === 204) {
-                    displayResult(resultElementId, { message: `User ID ${userId} has been successfully deleted` });
-                } else {
-                    const data = await response.text();
-                    displayResult(resultElementId, data || { message: `Deletion successful, status code: ${response.status}` });
-                }
-                // Clear input field
-                document.getElementById('delete-user-id').value = '';
-                // Refresh user count
-                getUsers();
-            } catch (error) {
-                displayError(resultElementId, error);
-            }
-        }
 
-        // Load users on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            getUsers();
-        });
+                try {
+                    await apiCall(`${API_CONFIG.BASE_URL}/${id}`, { method: 'DELETE' });
+                    setResults(prev => ({ ...prev, deleteUser: { message: `Utilisateur ID ${id} supprimé avec succès` } }));
+                    setDeleteForm({ id: '' });
+                    fetchUsers();
+                } catch (err) {
+                    setResults(prev => ({ ...prev, deleteUser: null }));
+                }
+            };
+
+            const uploadTemplate = async () => {
+                if (!templateForm.file) {
+                    alert('Veuillez sélectionner un fichier à télécharger');
+                    return;
+                }
+
+                if (!templateForm.name) {
+                    alert('Le nom du template est requis');
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('file', templateForm.file);
+                formData.append('name', templateForm.name || templateForm.file.name);
+                if (templateForm.description) formData.append('description', templateForm.description);
+                if (templateForm.category) formData.append('category', templateForm.category);
+                if (templateForm.variables) {
+                    try {
+                        JSON.parse(templateForm.variables);
+                        formData.append('variables', templateForm.variables);
+                    } catch (e) {
+                        alert('Format JSON invalide pour les variables');
+                        return;
+                    }
+                }
+
+                const token = API_CONFIG.getAuthToken();
+                if (!token) {
+                    alert('Vous devez être connecté pour uploader un template.');
+                    setActiveTab('login');
+                    return;
+                }
+
+                try {
+                    const data = await apiCall(`${API_CONFIG.ADMIN_BASE_URL}/business-plan-templates/upload`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: formData
+                    });
+                    
+                    setResults(prev => ({ ...prev, uploadTemplate: data }));
+                    setTemplateForm({ file: null, name: '', description: '', category: '', variables: '' });
+                    fetchTemplates();
+                    showToast('Template uploadé avec succès!');
+                } catch (err) {
+                    setResults(prev => ({ ...prev, uploadTemplate: null }));
+                    if (err.message.includes('401')) {
+                        alert('Session expirée. Veuillez vous reconnecter.');
+                        handleLogout();
+                    } else {
+                        alert(`Erreur lors de l'upload: ${err.message}`);
+                    }
+                }
+            };
+
+            const fetchTemplates = async () => {
+                setLoadingTemplates(true);
+                try {
+                    // Appeler l'API publique pour récupérer les templates
+                    const data = await apiCall(`${API_CONFIG.ADMIN_BASE_URL}/business-plan-templates/public`);
+                    setUploadedTemplates(Array.isArray(data) ? data : []);
+                } catch (error) {
+                    console.error('Erreur lors de la récupération des templates:', error);
+                    setUploadedTemplates([]);
+                } finally {
+                    setLoadingTemplates(false);
+                }
+            };
+
+            const handleLogin = async () => {
+                try {
+                    const data = await apiCall(`${API_CONFIG.ADMIN_BASE_URL}/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(loginForm)
+                    });
+                    if (data.access_token) {
+                        localStorage.setItem('admin_jwt_token', data.access_token);
+                        setIsAuthenticated(true);
+                        setActiveTab('users');
+                    }
+                } catch (err) {
+                    alert(`Erreur de connexion: ${err.message}`);
+                }
+            };
+
+            const handleLogout = () => {
+                localStorage.removeItem('admin_jwt_token');
+                setIsAuthenticated(false);
+                setActiveTab('login');
+            };
+
+            const handleEditUser = (user) => {
+                setUpdateForm({ id: user.id, username: user.username, email: user.email });
+                setActiveTab('update');
+            };
+
+            const handleDeleteUser = (user) => {
+                deleteUser(user.id);
+            };
+
+            const viewTemplateDetails = (template) => {
+                setSelectedTemplate(template);
+                setShowTemplateModal(true);
+            };
+
+            const closeTemplateModal = () => {
+                setShowTemplateModal(false);
+                setSelectedTemplate(null);
+            };
+
+            const showToast = (message, type = 'success') => {
+                const toastId = 'template-toast-' + Date.now();
+                const toast = document.createElement('div');
+                toast.id = toastId;
+                toast.className = `fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg animate-slide-up ${
+                    type === 'success' ? 'bg-green-100 border border-green-400 text-green-700' : 
+                    type === 'error' ? 'bg-red-100 border border-red-400 text-red-700' :
+                    'bg-blue-100 border border-blue-400 text-blue-700'
+                }`;
+                
+                toast.innerHTML = `
+                <div class="flex items-center">
+                        <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            ${type === 'success' ? 
+                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>' :
+                                type === 'error' ?
+                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>' :
+                                '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>'
+                            }
+                            </svg>
+                        <span class="text-sm font-medium">${message}</span>
+                        </div>
+                `;
+                
+                document.body.appendChild(toast);
+                
+                setTimeout(() => {
+                    if (document.getElementById(toastId)) {
+                        document.body.removeChild(toast);
+                    }
+                }, 3000);
+            };
+
+            // Composant de prévisualisation universelle de fichier
+            const FilePreview = ({ template }) => {
+                const [previewContent, setPreviewContent] = useState(null);
+                const [loading, setLoading] = useState(false);
+                const [error, setError] = useState(null);
+                const [fileInfo, setFileInfo] = useState(null);
+
+                const getFileSize = useCallback(async (url) => {
+                    try {
+                        const response = await fetch(url, { method: 'HEAD' });
+                        const contentLength = response.headers.get('content-length');
+                        return contentLength ? parseInt(contentLength) : null;
+                    } catch {
+                        return null;
+                    }
+                }, []);
+
+                const formatFileSize = (bytes) => {
+                    if (!bytes) return 'Taille inconnue';
+                    if (bytes < 1024) return bytes + ' B';
+                    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+                    else return (bytes / 1048576).toFixed(1) + ' MB';
+                };
+
+                const renderDownloadButton = (fileUrl, fileName) => (
+                    <div className="mt-4 text-center">
+                        <a
+                            href={fileUrl}
+                            download={fileName}
+                            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            Télécharger le fichier
+                        </a>
+                    </div>
+                );
+
+                const loadFilePreview = useCallback(async () => {
+                    if (!template?.file_path) return;
+                    
+                    setLoading(true);
+                    setError(null);
+                    
+                    try {
+                        const fileName = template.file_path.split('/').pop();
+                        const fileUrl = `${window.location.origin}/uploads/templates/${fileName}`;
+                        const fileType = template.file_type?.toLowerCase() || '';
+                        
+                        // Récupérer les informations du fichier
+                        const fileSize = await getFileSize(fileUrl);
+                        setFileInfo({
+                            name: fileName,
+                            size: fileSize,
+                            type: fileType,
+                            url: fileUrl
+                        });
+
+                        // PDF
+                        if (fileType === 'pdf') {
+                            try {
+                                const canvas = document.createElement('canvas');
+                                const context = canvas.getContext('2d');
+                                const pdf = await pdfjsLib.getDocument(fileUrl).promise;
+                                const page = await pdf.getPage(1);
+                                const viewport = page.getViewport({ scale: 0.8 });
+                                canvas.width = viewport.width;
+                                canvas.height = viewport.height;
+                                
+                                await page.render({ canvasContext: context, viewport }).promise;
+                                
+                                setPreviewContent(
+                                    <div>
+                                        <img src={canvas.toDataURL()} alt="PDF Preview" className="max-w-full h-auto border rounded" />
+                                        <p className="text-sm text-gray-500 mt-2">Première page du PDF ({pdf.numPages} page{pdf.numPages > 1 ? 's' : ''})</p>
+                                        {renderDownloadButton(fileUrl, fileName)}
+                    </div>
+                                );
+                            } catch (pdfError) {
+                                throw new Error('Erreur lors du chargement du PDF');
+                            }
+                        }
+                        // Documents Word
+                        else if (['doc', 'docx'].includes(fileType)) {
+                            try {
+                                const response = await fetch(fileUrl);
+                                const arrayBuffer = await response.arrayBuffer();
+                                const result = await mammoth.convertToHtml({ arrayBuffer });
+                                
+                                setPreviewContent(
+                                    <div>
+                                        <div className="border rounded p-4 bg-white max-h-96 overflow-y-auto prose prose-sm max-w-none"
+                                             dangerouslySetInnerHTML={{ __html: result.value }} />
+                                        <p className="text-sm text-gray-500 mt-2">Aperçu du document Word</p>
+                                        {renderDownloadButton(fileUrl, fileName)}
+                </div>
+                                );
+                            } catch (docError) {
+                                throw new Error('Erreur lors du chargement du document Word');
+                            }
+                        }
+                        // Fichiers Excel
+                        else if (['xls', 'xlsx'].includes(fileType)) {
+                            try {
+                                const response = await fetch(fileUrl);
+                                const arrayBuffer = await response.arrayBuffer();
+                                const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                                const sheetName = workbook.SheetNames[0];
+                                const worksheet = workbook.Sheets[sheetName];
+                                const htmlTable = XLSX.utils.sheet_to_html(worksheet);
+                                
+                                setPreviewContent(
+                                    <div>
+                                        <div className="border rounded p-4 bg-white max-h-96 overflow-auto">
+                                            <div dangerouslySetInnerHTML={{ __html: htmlTable }} />
+            </div>
+                                        <p className="text-sm text-gray-500 mt-2">
+                                            Feuille: {sheetName} ({workbook.SheetNames.length} feuille{workbook.SheetNames.length > 1 ? 's' : ''})
+                                        </p>
+                                        {renderDownloadButton(fileUrl, fileName)}
+        </div>
+                                );
+                            } catch (excelError) {
+                                throw new Error('Erreur lors du chargement du fichier Excel');
+                            }
+                        }
+                        // Images
+                        else if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(fileType)) {
+                            setPreviewContent(
+                                <div>
+                                    <img 
+                                        src={fileUrl} 
+                                        alt={template.name}
+                                        className="max-w-full h-auto border rounded max-h-96 object-contain mx-auto"
+                                        onError={() => setError('Erreur lors du chargement de l\'image')}
+                                    />
+                                    {renderDownloadButton(fileUrl, fileName)}
+                                </div>
+                            );
+                        }
+                        // Fichiers texte et code
+                        else if (['txt', 'md', 'json', 'xml', 'html', 'css', 'js', 'py', 'java', 'cpp', 'c', 'php', 'sql', 'csv'].includes(fileType)) {
+                            try {
+                                const response = await fetch(fileUrl);
+                                const text = await response.text();
+                                
+                                setPreviewContent(
+                                    <div>
+                                        <pre className="whitespace-pre-wrap text-sm bg-gray-50 p-4 rounded border max-h-96 overflow-auto font-mono">
+                                            {text}
+                                        </pre>
+                                        <p className="text-sm text-gray-500 mt-2">
+                                            Contenu du fichier {fileType.toUpperCase()} ({text.split('\n').length} ligne{text.split('\n').length > 1 ? 's' : ''})
+                                        </p>
+                                        {renderDownloadButton(fileUrl, fileName)}
+                </div>
+                                );
+                            } catch (textError) {
+                                throw new Error('Erreur lors du chargement du fichier texte');
+                            }
+                        }
+                        // Fichiers audio
+                        else if (['mp3', 'wav', 'ogg', 'm4a', 'aac'].includes(fileType)) {
+                            setPreviewContent(
+                                <div className="text-center">
+                                    <div className="bg-gray-100 p-8 rounded-lg">
+                                        <svg className="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
+                        </svg>
+                                        <audio controls className="mx-auto">
+                                            <source src={fileUrl} type={`audio/${fileType}`} />
+                                            Votre navigateur ne supporte pas l'élément audio.
+                                        </audio>
+                                        <p className="text-sm text-gray-500 mt-4">Fichier audio {fileType.toUpperCase()}</p>
+                    </div>
+                                    {renderDownloadButton(fileUrl, fileName)}
+                </div>
+                            );
+                        }
+                        // Fichiers vidéo
+                        else if (['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm', 'mkv'].includes(fileType)) {
+                            setPreviewContent(
+                                <div className="text-center">
+                                    <video controls className="max-w-full h-auto border rounded max-h-96 mx-auto">
+                                        <source src={fileUrl} type={`video/${fileType}`} />
+                                        Votre navigateur ne supporte pas l'élément vidéo.
+                                    </video>
+                                    <p className="text-sm text-gray-500 mt-2">Fichier vidéo {fileType.toUpperCase()}</p>
+                                    {renderDownloadButton(fileUrl, fileName)}
+            </div>
+                            );
+                        }
+                        // Archives
+                        else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(fileType)) {
+                            if (fileType === 'zip') {
+                                try {
+                                    const response = await fetch(fileUrl);
+                                    const arrayBuffer = await response.arrayBuffer();
+                                    const zip = await JSZip.loadAsync(arrayBuffer);
+                                    
+                                    const fileList = Object.keys(zip.files).slice(0, 20); // Limiter à 20 fichiers
+                                    
+                                    setPreviewContent(
+                    <div>
+                                            <div className="bg-gray-50 p-4 rounded border">
+                                                <h4 className="font-semibold mb-2">Contenu de l'archive ZIP:</h4>
+                                                <ul className="text-sm space-y-1 max-h-60 overflow-y-auto">
+                                                    {fileList.map((fileName, index) => (
+                                                        <li key={index} className="flex items-center">
+                                                            <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                                            </svg>
+                                                            {fileName}
+                                                        </li>
+                                                    ))}
+                                                    {Object.keys(zip.files).length > 20 && (
+                                                        <li className="text-gray-500 italic">... et {Object.keys(zip.files).length - 20} fichier(s) de plus</li>
+                                                    )}
+                                                </ul>
+                                                <p className="text-xs text-gray-500 mt-2">
+                                                    {Object.keys(zip.files).length} fichier(s) dans l'archive
+                                                </p>
+                    </div>
+                                            {renderDownloadButton(fileUrl, fileName)}
+                    </div>
+                                    );
+                                } catch (zipError) {
+                                    throw new Error('Erreur lors de la lecture de l\'archive ZIP');
+                                }
+                            } else {
+                                setPreviewContent(
+                                    <div className="text-center p-8 bg-gray-50 rounded border">
+                                        <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                        </svg>
+                                        <p className="text-sm text-gray-500">Archive {fileType.toUpperCase()}</p>
+                                        <p className="text-xs text-gray-400 mt-1">Prévisualisation limitée pour ce format d'archive</p>
+                                        {renderDownloadButton(fileUrl, fileName)}
+                    </div>
+                                );
+                            }
+                        }
+                        // Tous les autres types de fichiers
+                        else {
+                            setPreviewContent(
+                                <div className="text-center p-8 bg-gray-50 rounded border">
+                                    <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                    </svg>
+                                    <p className="text-sm text-gray-500">Fichier {fileType.toUpperCase()}</p>
+                                    <p className="text-xs text-gray-400 mt-1">Prévisualisation en cours de développement pour ce type</p>
+                                    {renderDownloadButton(fileUrl, fileName)}
+                </div>
+                            );
+                        }
+                    } catch (err) {
+                        setError(err.message || 'Erreur lors du chargement de la prévisualisation');
+                        setPreviewContent(null);
+                    } finally {
+                        setLoading(false);
+                    }
+                }, [template, getFileSize]);
+
+                useEffect(() => {
+                    loadFilePreview();
+                }, [loadFilePreview]);
+
+                if (loading) {
+                    return (
+                        <div className="flex items-center justify-center p-8">
+                            <LoadingSpinner />
+                            <span className="ml-2 text-sm text-gray-600">Chargement de la prévisualisation...</span>
+            </div>
+                    );
+                }
+
+                if (error) {
+                    return (
+                        <div className="text-center p-8 bg-red-50 rounded border border-red-200">
+                            <svg className="mx-auto h-12 w-12 text-red-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <p className="text-sm text-red-600">{error}</p>
+                            <button 
+                                onClick={loadFilePreview}
+                                className="mt-2 text-sm text-red-500 hover:text-red-700 underline"
+                            >
+                                Réessayer
+                            </button>
+                            {fileInfo && renderDownloadButton(fileInfo.url, fileInfo.name)}
+                </div>
+                    );
+                }
+
+                return (
+                    <div>
+                        {fileInfo && (
+                            <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="font-medium text-blue-900">{fileInfo.name}</span>
+                                    <span className="text-blue-700">{formatFileSize(fileInfo.size)}</span>
+                    </div>
+                            </div>
+                        )}
+                        {previewContent || <div className="text-center p-4 text-gray-500">Aucune prévisualisation disponible</div>}
+                    </div>
+                );
+            };
+
+            const getFileIcon = (fileType) => {
+                switch (fileType.toUpperCase()) {
+                    case 'PDF':
+                        return (
+                            <svg className="h-5 w-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M6 4H5a2 2 0 00-2 2v11a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2H7V4a1 1 0 011-1h4a1 1 0 011 1v3H6V4z" />
+                        </svg>
+                        );
+                    case 'EXCEL':
+                        return (
+                            <svg className="h-5 w-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M2 3a1 1 0 00-1 1v12a1 1 0 001 1h16a1 1 0 001-1V4a1 1 0 00-1-1H2zM8 7V5h2v2H8zm0 4V9h2v2H8zm0 4v-2h2v2H8zm4-8V5h2v2h-2zm0 4V9h2v2h-2zm0 4v-2h2v2h-2z" />
+                            </svg>
+                        );
+                    case 'POWERPOINT':
+                        return (
+                            <svg className="h-5 w-5 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M2 3a1 1 0 00-1 1v12a1 1 0 001 1h16a1 1 0 001-1V4a1 1 0 00-1-1H2zM5 7V5h2v2H5zm0 4V9h2v2H5zm0 4v-2h2v2H5zm4-8V5h2v2H9zm0 4V9h2v2H9zm0 4v-2h2v2H9zm4-8V5h2v2h-2zm0 4V9h2v2h-2zm0 4v-2h2v2h-2z" />
+                            </svg>
+                        );
+                    default:
+                        return (
+                            <svg className="h-5 w-5 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M4 4a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2H4zM7 8a1 1 0 012 0v5a1 1 0 01-2 0V8zm4 0a1 1 0 012 0v5a1 1 0 01-2 0V8z" />
+                            </svg>
+                        );
+                }
+            };
+
+            const formatFileSize = (bytes) => {
+                if (bytes < 1024) return bytes + ' B';
+                else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+                else return (bytes / 1048576).toFixed(1) + ' MB';
+            };
+
+            const getFileExtension = (filename) => {
+                return filename.split('.').pop().toUpperCase();
+            };
+
+            const showFileUploadSuccess = (files) => {
+                const notification = document.getElementById('upload-success-notification');
+                const text = document.getElementById('upload-success-text');
+                
+                if (notification && text) {
+                    text.textContent = `${files.length} fichier${files.length > 1 ? 's' : ''} sélectionné${files.length > 1 ? 's' : ''}`;
+                    notification.classList.remove('hidden');
+        
+                    setTimeout(() => {
+                        notification.classList.add('hidden');
+                    }, 3000);
+                }
+            };
+
+            const stats = useMemo(() => [
+                {
+                    title: 'Total Utilisateurs',
+                    value: totalUsers,
+                    icon: <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>,
+                    color: 'bg-gradient-to-r from-blue-500 to-blue-600',
+                    trend: 0
+                },
+                {
+                    title: 'Créés Aujourd\'hui',
+                    value: 0,
+                    icon: <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>,
+                    color: 'bg-gradient-to-r from-green-500 to-green-600',
+                    trend: 0
+                },
+                {
+                    title: 'Modifiés Aujourd\'hui',
+                    value: 0,
+                    icon: <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>,
+                    color: 'bg-gradient-to-r from-yellow-500 to-yellow-600',
+                    trend: 0
+                },
+                {
+                    title: 'Supprimés Aujourd\'hui',
+                    value: 0,
+                    icon: <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>,
+                    color: 'bg-gradient-to-r from-red-500 to-red-600',
+                    trend: 0
+                }
+            ], [totalUsers]);
+
+            const tabs = [
+                { id: 'users', label: 'Utilisateurs', icon: '👥' },
+                { id: 'create', label: 'Créer', icon: '➕' },
+                { id: 'get', label: 'Rechercher', icon: '🔍' },
+                { id: 'update', label: 'Modifier', icon: '✏️' },
+                { id: 'delete', label: 'Supprimer', icon: '🗑️' },
+                { id: 'template', label: 'Template', icon: '📄' },
+                isAuthenticated ? { id: 'logout', label: 'Déconnexion', icon: '🚪' } : { id: 'login', label: 'Connexion', icon: '🔑' }
+            ];
+
+            useEffect(() => {
+                const token = API_CONFIG.getAuthToken();
+                if (token) {
+                    setIsAuthenticated(true);
+                } else {
+                    setActiveTab('login');
+                }
+            }, []);
+
+            if (!isAuthenticated) {
+                return (
+                    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+                        <Card title="Connexion Administrateur" className="w-full max-w-md">
+                            <div className="space-y-4">
+                                <Input
+                                    label="Nom d'utilisateur"
+                                    value={loginForm.username}
+                                    onChange={(value) => setLoginForm(prev => ({ ...prev, username: value }))}
+                                    placeholder="admin"
+                                />
+                                <Input
+                                    label="Mot de passe"
+                                    type="password"
+                                    value={loginForm.password}
+                                    onChange={(value) => setLoginForm(prev => ({ ...prev, password: value }))}
+                                    placeholder="admin123"
+                                />
+                                <Button onClick={handleLogin} loading={loading} className="w-full">
+                                    Se connecter
+                                </Button>
+                    </div>
+                        </Card>
+                </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+                    <Header totalUsers={totalUsers} apiStatus={apiStatus} />
+                    
+                    {/* Modal pour les détails du template */}
+                    {showTemplateModal && selectedTemplate && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                                <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                                    <h3 className="text-xl font-semibold text-gray-900">Détails du Template</h3>
+                                    <button
+                                        onClick={closeTemplateModal}
+                                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                                    >
+                                        <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                        </svg>
+                                    </button>
+                                </div>
+                                <div className="p-6 space-y-4">
+                                    <div className="flex items-center space-x-3">
+                                        {getFileIcon(selectedTemplate.file_type)}
+                                        <h4 className="text-lg font-medium text-gray-900">{selectedTemplate.name}</h4>
+            </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Type de fichier</label>
+                                            <span className="inline-block bg-gray-100 text-gray-800 text-sm font-medium px-2.5 py-0.5 rounded">
+                                                {selectedTemplate.file_type?.toUpperCase()}
+                                            </span>
+                </div>
+                                        
+                                        {selectedTemplate.category && (
+                    <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie</label>
+                                                <span className="inline-block bg-blue-50 text-blue-700 text-sm font-medium px-2.5 py-0.5 rounded">
+                                                    {selectedTemplate.category}
+                                                </span>
+                    </div>
+                                        )}
+                                        
+                    <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Date de création</label>
+                                            <p className="text-sm text-gray-600">
+                                                {new Date(selectedTemplate.created_at).toLocaleDateString('fr-FR', {
+                                                    year: 'numeric',
+                                                    month: 'long',
+                                                    day: 'numeric',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit'
+                                                })}
+                                            </p>
+                    </div>
+                                        
+                    <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Statut</label>
+                                            <span className={`inline-block text-sm font-medium px-2.5 py-0.5 rounded ${
+                                                selectedTemplate.is_active 
+                                                    ? 'bg-green-50 text-green-700'
+                                                    : 'bg-red-50 text-red-700'
+                                            }`}>
+                                                {selectedTemplate.is_active ? 'Actif' : 'Inactif'}
+                                            </span>
+                    </div>
+                    </div>
+                                    
+                                    {selectedTemplate.description && (
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                                            <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+                                                {selectedTemplate.description}
+                                            </p>
+                </div>
+                                    )}
+                                    
+                                    {selectedTemplate.variables && selectedTemplate.variables.length > 0 && (
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Variables</label>
+                                            <div className="bg-gray-50 p-3 rounded-lg">
+                                                <pre className="text-sm text-gray-600 whitespace-pre-wrap">
+                                                    {JSON.stringify(selectedTemplate.variables, null, 2)}
+                                                </pre>
+                </div>
+                                        </div>
+                                    )}
+                                    
+                        <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Prévisualisation</label>
+                                        <FilePreview template={selectedTemplate} />
+                        </div>
+                    </div>
+                                
+                                <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
+                                    <Button onClick={closeTemplateModal} variant="secondary">
+                                        Fermer
+                                    </Button>
+                    </div>
+                </div>
+            </div>
+                    )}
+                    
+                    <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+                        {/* Stats Overview */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                            {stats.map((stat, index) => (
+                                <div key={stat.title} className="animate-slide-up" style={{animationDelay: `${index * 0.1}s`}}>
+                                    <StatsCard {...stat} />
+        </div>
+                            ))}
+                        </div>
+
+                        {/* Navigation Tabs */}
+                        <div className="mb-6 sm:mb-8">
+                            <div className="border-b border-gray-200 bg-white rounded-t-xl shadow-sm">
+                                <nav className="flex overflow-x-auto scrollbar-hide px-4 sm:px-6" aria-label="Tabs">
+                                    {tabs.map((tab) => (
+                                        <button
+                                            key={tab.id}
+                                            onClick={() => {
+                                                if (tab.id === 'logout') {
+                                                    handleLogout();
+                                                } else {
+                                                    setActiveTab(tab.id);
+                                                }
+                                            }}
+                                            className={`py-3 sm:py-4 px-3 sm:px-1 border-b-2 font-medium text-xs sm:text-sm transition-all duration-200 whitespace-nowrap flex-shrink-0 mr-6 sm:mr-8 ${
+                                                activeTab === tab.id
+                                                    ? 'border-primary-500 text-primary-600'
+                                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                            }`}
+                                        >
+                                            <span className="mr-1 sm:mr-2 text-sm sm:text-base">{tab.icon}</span>
+                                            <span className="hidden xs:inline">{tab.label}</span>
+                                        </button>
+                                    ))}
+                                </nav>
+                </div>
+                </div>
+
+                        {/* Content based on active tab */}
+                        <div className="animate-fade-in">
+                            {activeTab === 'users' && (
+                                <Card title="Liste des Utilisateurs" subtitle="Gérez tous vos utilisateurs">
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between items-center">
+                                            <Button onClick={fetchUsers} loading={loading}>
+                                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                                </svg>
+                                                Actualiser
+                                            </Button>
+            </div>
+                                        <UserTable 
+                                            users={users} 
+                                            onEdit={handleEditUser}
+                                            onDelete={handleDeleteUser}
+                                            loading={loading}
+                                        />
+                                        <ResultDisplay data={results.getUsers} error={error} loading={loading} />
+        </div>
+                                </Card>
+                            )}
+
+                            {activeTab === 'create' && (
+                                <Card title="Créer un Utilisateur" subtitle="Ajouter un nouvel utilisateur à la base de données">
+                                    <div className="space-y-4">
+                                        <Input
+                                            label="Nom d'utilisateur"
+                                            value={createForm.username}
+                                            onChange={(value) => setCreateForm(prev => ({ ...prev, username: value }))}
+                                            placeholder="Saisir le nom d'utilisateur"
+                                            required
+                                        />
+                                        <Input
+                                            label="Email"
+                                            type="email"
+                                            value={createForm.email}
+                                            onChange={(value) => setCreateForm(prev => ({ ...prev, email: value }))}
+                                            placeholder="Saisir l'email"
+                                            required
+                                        />
+                                        <Button onClick={createUser} variant="success" loading={loading}>
+                                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                                            </svg>
+                                            Créer l'Utilisateur
+                                        </Button>
+                                        <ResultDisplay data={results.createUser} error={error} loading={loading} />
+                                    </div>
+                                </Card>
+                            )}
+
+                            {activeTab === 'get' && (
+                                <Card title="Rechercher un Utilisateur" subtitle="Récupérer un utilisateur spécifique par ID">
+                                    <div className="space-y-4">
+                                        <Input
+                                            label="ID Utilisateur"
+                                            type="number"
+                                            value={getUserForm.id}
+                                            onChange={(value) => setGetUserForm({ id: value })}
+                                            placeholder="Saisir l'ID utilisateur"
+                                            required
+                                        />
+                                        <Button onClick={getUser} loading={loading}>
+                                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16l2.879-2.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242zM21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                            </svg>
+                                            Rechercher l'Utilisateur
+                                        </Button>
+                                        <ResultDisplay data={results.getUser} error={error} loading={loading} />
+                                    </div>
+                                </Card>
+                            )}
+
+                            {activeTab === 'update' && (
+                                <Card title="Modifier un Utilisateur" subtitle="Modifier les informations d'un utilisateur existant">
+                                    <div className="space-y-4">
+                                        <Input
+                                            label="ID Utilisateur"
+                                            type="number"
+                                            value={updateForm.id}
+                                            onChange={(value) => setUpdateForm(prev => ({ ...prev, id: value }))}
+                                            placeholder="Saisir l'ID utilisateur"
+                                            required
+                                        />
+                                        <Input
+                                            label="Nouveau Nom d'utilisateur"
+                                            value={updateForm.username}
+                                            onChange={(value) => setUpdateForm(prev => ({ ...prev, username: value }))}
+                                            placeholder="Saisir le nouveau nom d'utilisateur"
+                                        />
+                                        <Input
+                                            label="Nouvel Email"
+                                            type="email"
+                                            value={updateForm.email}
+                                            onChange={(value) => setUpdateForm(prev => ({ ...prev, email: value }))}
+                                            placeholder="Saisir le nouvel email"
+                                        />
+                                        <Button onClick={updateUser} variant="warning" loading={loading}>
+                                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                            </svg>
+                                            Modifier l'Utilisateur
+                                        </Button>
+                                        <ResultDisplay data={results.updateUser} error={error} loading={loading} />
+                                    </div>
+                                </Card>
+                            )}
+
+                            {activeTab === 'delete' && (
+                                <Card title="Supprimer un Utilisateur" subtitle="Supprimer définitivement un utilisateur de la base de données">
+                                    <div className="space-y-4">
+                                        <Input
+                                            label="ID Utilisateur"
+                                            type="number"
+                                            value={deleteForm.id}
+                                            onChange={(value) => setDeleteForm({ id: value })}
+                                            placeholder="Saisir l'ID utilisateur"
+                                            required
+                                        />
+                                        <Button onClick={() => deleteUser()} variant="danger" loading={loading}>
+                                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                            </svg>
+                                            Supprimer l'Utilisateur
+                                        </Button>
+                                        <ResultDisplay data={results.deleteUser} error={error} loading={loading} />
+                                    </div>
+                                </Card>
+                            )}
+
+                            {activeTab === 'template' && (
+                                <Card title="Télécharger un Template de Plan d'Affaires" subtitle="Télécharger un nouveau template (PDF, Excel, Word, Image)">
+                                    <div className="space-y-4 sm:space-y-6">
+                                        {/* Zone de drag and drop améliorée */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Fichier Template</label>
+                                            <div 
+                                                id="enhanced-drop-area" 
+                                                className="relative border-2 border-dashed border-gray-300 rounded-lg p-6 sm:p-8 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 transition-all duration-300 cursor-pointer min-h-[200px] group"
+                                                onDragOver={(e) => {
+                                                    e.preventDefault();
+                                                    e.currentTarget.classList.add('border-primary-400', 'bg-primary-50');
+                                                }}
+                                                onDragLeave={(e) => {
+                                                    e.preventDefault();
+                                                    e.currentTarget.classList.remove('border-primary-400', 'bg-primary-50');
+                                                }}
+                                                onDrop={(e) => {
+                                                    e.preventDefault();
+                                                    e.currentTarget.classList.remove('border-primary-400', 'bg-primary-50');
+                                                    const files = Array.from(e.dataTransfer.files);
+                                                    if (files.length > 0) {
+                                                        setTemplateForm(prev => ({ ...prev, file: files[0] }));
+                                                        showFileUploadSuccess(files);
+                                                    }
+                                                }}
+                                            >
+                                                {!templateForm.file ? (
+                                                    <>
+                                                        <svg className="mx-auto h-12 w-12 sm:h-16 sm:w-16 text-gray-400 group-hover:text-primary-500 transition-colors" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                                                            <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                                        </svg>
+                                                        <div className="mt-4 text-center">
+                                                            <div className="flex flex-col sm:flex-row items-center justify-center text-sm text-gray-600">
+                                                                <label htmlFor="template-file" className="relative cursor-pointer bg-white rounded-md font-medium text-primary-600 hover:text-primary-500 focus-within:outline-none px-2 py-1">
+                                                                    <span>Télécharger un fichier</span>
+                                                                    <input 
+                                                                        id="template-file" 
+                                                                        name="file" 
+                                                                        type="file" 
+                                                                        className="sr-only"
+                                                                        onChange={(e) => {
+                                                                            if (e.target.files.length > 0) {
+                                                                                setTemplateForm(prev => ({ ...prev, file: e.target.files[0] }));
+                                                                                showFileUploadSuccess(Array.from(e.target.files));
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                </label>
+                                                                <p className="mt-1 sm:mt-0 sm:pl-1">ou glisser-déposer</p>
+                                                            </div>
+                                                            <p className="text-xs text-gray-500 mt-2">PDF, Excel, Word, PNG, JPG jusqu'à 16MB</p>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <div className="text-center animate-bounce-in">
+                                                        <div className="mx-auto h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                                                            <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                                                            </svg>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <p className="text-sm font-medium text-gray-900">{templateForm.file.name}</p>
+                                                            <p className="text-xs text-gray-500">{formatFileSize(templateForm.file.size)}</p>
+                                                            <div className="flex items-center justify-center space-x-2">
+                                                                <span className="inline-block bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                                                                    {getFileExtension(templateForm.file.name)}
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setTemplateForm(prev => ({ ...prev, file: null }))}
+                                                                    className="text-red-600 hover:text-red-800 text-xs font-medium"
+                                                                >
+                                                                    Supprimer
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    )}
+                                            </div>
+                                        </div>
+
+                                        {/* Notification de succès */}
+                                        <div id="upload-success-notification" className="hidden fixed top-4 right-4 z-50 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg shadow-lg animate-slide-up">
+                                            <div className="flex items-center">
+                                                <svg className="h-5 w-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                                                </svg>
+                                                <span id="upload-success-text" className="text-sm font-medium"></span>
+                                            </div>
+                                        </div>
+
+                                        {/* Reste des champs du formulaire avec responsive */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <Input
+                                                label="Nom"
+                                                value={templateForm.name}
+                                                onChange={(value) => setTemplateForm(prev => ({ ...prev, name: value }))}
+                                                placeholder="Saisir le nom du template"
+                                            />
+                                            <Input
+                                                label="Catégorie"
+                                                value={templateForm.category}
+                                                onChange={(value) => setTemplateForm(prev => ({ ...prev, category: value }))}
+                                                placeholder="ex: Technologie, Finance, Marketing"
+                                            />
+                                        </div>
+                                        
+                                        <Textarea
+                                            label="Description"
+                                            value={templateForm.description}
+                                            onChange={(value) => setTemplateForm(prev => ({ ...prev, description: value }))}
+                                            placeholder="Saisir la description du template"
+                                            rows={3}
+                                        />
+                                        
+                                        <Textarea
+                                            label="Variables (JSON)"
+                                            value={templateForm.variables}
+                                            onChange={(value) => setTemplateForm(prev => ({ ...prev, variables: value }))}
+                                            placeholder='{"company_name": "string", "industry": "string"}'
+                                            rows={4}
+                                        />
+                                        
+                                        <Button onClick={uploadTemplate} variant="purple" loading={loading} className="w-full sm:w-auto">
+                                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                                            </svg>
+                                            Télécharger le Template
+                                        </Button>
+                                        
+                                        <ResultDisplay data={results.uploadTemplate} error={error} loading={loading} />
+
+                                        {/* Liste des templates avec responsive grid */}
+                                        <div className="mt-8 border-t border-gray-200 pt-6">
+                                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 space-y-2 sm:space-y-0">
+                                                <div>
+                                                    <h3 className="text-lg font-medium text-gray-900">Templates téléchargés</h3>
+                                                    <p className="text-sm text-gray-500">{uploadedTemplates.length} template{uploadedTemplates.length !== 1 ? 's' : ''}</p>
+                                                </div>
+                                                <Button onClick={fetchTemplates} variant="secondary" size="sm" loading={loadingTemplates}>
+                                                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                                    </svg>
+                                                    <span className="hidden sm:inline">Actualiser</span>
+                                                    <span className="sm:hidden">↻</span>
+                                                </Button>
+                                            </div>
+
+                                            {loadingTemplates ? (
+                                                <div className="flex justify-center py-8">
+                                                    <LoadingSpinner />
+                                                </div>
+                                            ) : uploadedTemplates.length === 0 ? (
+                                                <div className="bg-gray-50 rounded-lg p-6 text-center">
+                                                    <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                                    </svg>
+                                                    <p className="mt-2 text-gray-500">Aucun template téléchargé</p>
+                                                </div>
+                                            ) : (
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                    {uploadedTemplates.map(template => (
+                                                        <div key={template.id} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                                                            <div className="p-4">
+                                                                <div className="flex items-center mb-2">
+                                                                    {getFileIcon(template.file_type)}
+                                                                    <h4 className="text-sm sm:text-base font-medium text-gray-900 ml-2 truncate">{template.name}</h4>
+                                                                </div>
+                                                                <p className="text-xs sm:text-sm text-gray-500 line-clamp-2 mb-3">{template.description || 'Aucune description'}</p>
+                                                                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                                                                    <span className="bg-gray-100 rounded-full px-2 py-1">{template.file_type}</span>
+                                                                    {template.category && (
+                                                                        <span className="bg-blue-50 text-blue-700 rounded-full px-2 py-1">{template.category}</span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <div className="bg-gray-50 px-4 py-2 border-t border-gray-200 flex justify-between items-center">
+                                                                <span className="text-xs text-gray-500">
+                                                                    {new Date(template.created_at).toLocaleDateString()}
+                                                                </span>
+                                                                <button
+                                                                    className="text-blue-600 hover:text-blue-800 p-1"
+                                                                    onClick={() => viewTemplateDetails(template)}
+                                                                >
+                                                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                                                    </svg>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </Card>
+                            )}
+                        </div>
+                    </main>
+
+                    {/* Footer */}
+                    <footer className="bg-white border-t border-gray-200 mt-12">
+                        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+                            <div className="flex justify-between items-center">
+                                <div className="text-sm text-gray-500">
+                                    © 2024 User API Dashboard. Construit avec React et Tailwind CSS.
+                                </div>
+                                <div className="flex space-x-6">
+                                    <a href="#" className="text-sm text-gray-500 hover:text-gray-900 transition-colors duration-200">Documentation</a>
+                                    <a href="#" className="text-sm text-gray-500 hover:text-gray-900 transition-colors duration-200">Référence API</a>
+                                    <a href="#" className="text-sm text-gray-500 hover:text-gray-900 transition-colors duration-200">Support</a>
+                                </div>
+                            </div>
+                        </div>
+                    </footer>
+                </div>
+            );
+        };
+
+        // Rendu de l'application
+        ReactDOM.render(<Dashboard />, document.getElementById('root'));
     </script>
 </body>
 </html>

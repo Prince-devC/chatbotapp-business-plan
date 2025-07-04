@@ -6,8 +6,12 @@ import requests
 from typing import Optional, Dict, Any
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
+import logging
+from src.services.gemini_service import GeminiAnalysisService
+from src.services.document_generator import DocumentGenerator
+from src.models.database import db, User, Conversation, Message, WebhookLog, BusinessPlanTemplate, get_db_connection
 
-from src.models.database import db, User, Conversation, Message, WebhookLog, BusinessPlanTemplate
+logger = logging.getLogger(__name__)
 
 chatbot_bp = Blueprint('chatbot', __name__)
 
@@ -346,12 +350,100 @@ def whatsapp_webhook():
         # Commit all changes
         db.session.commit()
         
+        # Nouveau système avec Gemini
         try:
-            # Process bot response in a separate transaction
-            process_bot_response(conversation, message)
+            if body.strip():  # Seulement si le message n'est pas vide
+                logger.info(f"📱 Message WhatsApp de {from_number}: {body}")
+                
+                # Messages système à ignorer
+                system_messages = ['typing...', 'en ligne', 'online', 'hors ligne', 'offline']
+                if body.lower() not in system_messages:
+                    # Importer le service WhatsApp
+                    from src.services.whatsapp_service import whatsapp_service
+                    
+                    # Vérifier si c'est une commande /start
+                    if body.strip().lower() == '/start':
+                        welcome_text = """🤖 *Bienvenue dans le Générateur de Business Plan IA* 
+
+Je peux créer un business plan complet pour votre projet d'entreprise !
+
+📋 *Comment ça marche :*
+• Commencez votre message par "Je veux"
+• Décrivez votre idée d'entreprise
+• Je génère automatiquement votre business plan
+
+💡 *Exemples :*
+• "Je veux créer une startup de livraison de repas"
+• "Je veux ouvrir un salon de coiffure"
+• "Je veux lancer une application mobile"
+
+📄 Vous recevrez 2 fichiers :
+• 📊 Business Plan Excel (avec projections financières)
+• 📋 PDF Technique (spécifications détaillées)
+
+Tapez votre idée en commençant par "Je veux" pour commencer ! 🚀"""
+                        
+                        whatsapp_service.send_simple_message(from_number, welcome_text)
+                        logger.info(f"✅ Message d'accueil envoyé à {from_number}")
+                        
+                    # Vérifier si le message commence par "je veux"
+                    elif body.strip().lower().startswith('je veux'):
+                        # Envoyer le message de bienvenue
+                        whatsapp_service.send_welcome_message(from_number, body)
+                        
+                        # Générer le business plan avec Gemini
+                        result = generate_business_plan_with_gemini(body, from_number)
+                        
+                        if result['success']:
+                            business_plan = result['business_plan']
+                            files = result['files']
+                            
+                            # URL de base pour les téléchargements
+                            base_url = request.url_root.rstrip('/')
+                            
+                            # Envoyer le message de succès avec les liens de téléchargement
+                            whatsapp_service.send_success_message(
+                                from_number, 
+                                business_plan, 
+                                files, 
+                                result['documents_analyzed'],
+                                base_url
+                            )
+                            
+                            logger.info(f"✅ Business plan généré avec succès pour {from_number}")
+                        else:
+                            # Envoyer le message d'erreur
+                            whatsapp_service.send_error_message(from_number, result['error'])
+                            logger.error(f"❌ Erreur génération pour {from_number}: {result['error']}")
+                    
+                    else:
+                        # Message pour guider l'utilisateur
+                        help_text = """❓ *Comment utiliser le générateur de Business Plan :*
+
+🔄 Tapez */start* pour voir le message d'accueil
+
+💡 *Ou commencez votre message par "Je veux"* suivi de votre idée :
+
+✅ *Exemples corrects :*
+• "Je veux créer une startup de livraison"
+• "Je veux ouvrir un restaurant"
+• "Je veux lancer une boutique en ligne"
+
+❌ *Évitez :*
+• Messages généraux sans "Je veux"
+• Questions simples
+
+Essayez maintenant ! 🚀"""
+                        
+                        whatsapp_service.send_simple_message(from_number, help_text)
+                        logger.info(f"📤 Message d'aide envoyé à {from_number}")
         except Exception as bot_error:
-            print(f"Error in bot response: {str(bot_error)}")
-            # Don't fail the webhook just because the bot response failed
+            logger.error(f"💥 Erreur critique génération: {str(bot_error)}")
+            try:
+                from src.services.whatsapp_service import whatsapp_service
+                whatsapp_service.send_system_error_message(from_number)
+            except:
+                pass
         
         return '', 204
         
@@ -617,4 +709,376 @@ def process_messenger_message(messaging_event):
 def whatsapp_webhook_alt():
     """Route alternative pour le webhook WhatsApp"""
     return whatsapp_webhook()
+
+def get_all_templates():
+    """Récupère tous les templates de la base de données."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT id, name, category, file_path, file_type, created_at
+            FROM business_plan_templates
+            WHERE is_active = 1
+            ORDER BY created_at DESC
+        """)
+        
+        templates = []
+        for row in cursor.fetchall():
+            templates.append({
+                'id': row[0],
+                'name': row[1],
+                'category': row[2],
+                'file_path': row[3],
+                'file_type': row[4],
+                'created_at': row[5]
+            })
+        
+        conn.close()
+        return templates
+    except Exception as e:
+        logger.error(f"Erreur récupération templates: {str(e)}")
+        return []
+
+def generate_business_plan_with_gemini(user_message, phone_number):
+    """Génère un business plan complet avec Gemini basé sur le message utilisateur."""
+    try:
+        # Récupérer tous les templates
+        templates = get_all_templates()
+        
+        if not templates:
+            return {
+                'success': False,
+                'error': 'Aucun template disponible dans la base de données'
+            }
+        
+        logger.info(f"Génération business plan pour {phone_number}: {len(templates)} templates trouvés")
+        
+        # Initialiser Gemini
+        gemini_service = GeminiAnalysisService()
+        
+        # Analyser avec Gemini
+        analysis_result = gemini_service.analyze_documents_for_business_plan(templates, user_message)
+        
+        if not analysis_result['success']:
+            return {
+                'success': False,
+                'error': f"Erreur analyse Gemini: {analysis_result.get('error')}"
+            }
+        
+        business_plan_data = analysis_result['business_plan']
+        
+        # Générer les fichiers
+        doc_generator = DocumentGenerator()
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        safe_phone = phone_number.replace('+', '').replace(' ', '')
+        
+        # Générer Excel
+        excel_filename = f"business_plan_{safe_phone}_{timestamp}.xlsx"
+        excel_path = doc_generator.generate_excel_business_plan(business_plan_data, excel_filename)
+        
+        # Générer PDF
+        pdf_filename = f"business_plan_{safe_phone}_{timestamp}.pdf"
+        pdf_path = doc_generator.generate_pdf_business_plan(business_plan_data, pdf_filename)
+        
+        return {
+            'success': True,
+            'business_plan': business_plan_data,
+            'files': {
+                'excel': {
+                    'path': excel_path,
+                    'filename': excel_filename
+                },
+                'pdf': {
+                    'path': pdf_path,
+                    'filename': pdf_filename
+                }
+            },
+            'documents_analyzed': analysis_result['documents_analyzed']
+        }
+        
+    except Exception as e:
+        logger.error(f"Erreur génération business plan: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+@chatbot_bp.route('/whatsapp-gemini', methods=['POST'])
+def whatsapp_gemini_webhook():
+    """
+    Webhook WhatsApp avec Gemini AI - génère automatiquement un business plan 
+    avec Gemini pour chaque message reçu
+    """
+    try:
+        data = request.get_json() or request.form.to_dict()
+        logger.info(f"Webhook WhatsApp Gemini reçu: {data}")
+        
+        # Format générique - adapter selon votre provider WhatsApp
+        # Pour Twilio WhatsApp (form data)
+        if 'Body' in data and 'From' in data:
+            message = data.get('Body', '').strip()
+            phone_number = data.get('From', '').replace('whatsapp:', '')
+        # Pour WhatsApp Business API (JSON)
+        elif 'messages' in data:
+            messages = data.get('messages', [])
+            if messages:
+                message = messages[0].get('text', {}).get('body', '').strip()
+                phone_number = messages[0].get('from', '')
+            else:
+                message = ''
+                phone_number = ''
+        # Format personnalisé
+        else:
+            message = data.get('message', {}).get('text', '').strip()
+            phone_number = data.get('from', '')
+        
+        if not message or not phone_number:
+            logger.warning("Message ou numéro manquant dans le webhook")
+            return jsonify({'status': 'no_content'}), 200
+        
+        logger.info(f"📱 Message WhatsApp de {phone_number}: {message}")
+        
+        # Messages système à ignorer
+        system_messages = ['typing...', 'en ligne', 'online', 'hors ligne', 'offline']
+        if message.lower() in system_messages:
+            return jsonify({'status': 'system_message_ignored'}), 200
+        
+        # Importer le service WhatsApp
+        from src.services.whatsapp_service import whatsapp_service
+        
+        # Envoyer le message de bienvenue
+        whatsapp_service.send_welcome_message(phone_number, message)
+        
+        # Générer le business plan avec Gemini
+        result = generate_business_plan_with_gemini(message, phone_number)
+        
+        if result['success']:
+            business_plan = result['business_plan']
+            files = result['files']
+            
+            # URL de base pour les téléchargements
+            base_url = request.url_root.rstrip('/')
+            
+            # Envoyer le message de succès avec les liens de téléchargement
+            whatsapp_service.send_success_message(
+                phone_number, 
+                business_plan, 
+                files, 
+                result['documents_analyzed'],
+                base_url
+            )
+            
+            logger.info(f"✅ Business plan généré avec succès pour {phone_number}")
+            
+            return jsonify({
+                'status': 'success',
+                'message': 'Business plan généré et envoyé',
+                'business_plan_title': business_plan.get('titre'),
+                'files_generated': 2,
+                'documents_analyzed': result['documents_analyzed'],
+                'phone_number': phone_number
+            }), 200
+            
+        else:
+            # Envoyer le message d'erreur
+            whatsapp_service.send_error_message(phone_number, result['error'])
+            
+            logger.error(f"❌ Erreur génération pour {phone_number}: {result['error']}")
+            
+            return jsonify({
+                'status': 'error',
+                'message': result['error'],
+                'phone_number': phone_number
+            }), 200
+        
+    except Exception as e:
+        logger.error(f"💥 Erreur critique webhook WhatsApp: {str(e)}")
+        
+        # Envoyer message d'erreur système
+        try:
+            from src.services.whatsapp_service import whatsapp_service
+            whatsapp_service.send_system_error_message(
+                phone_number if 'phone_number' in locals() else 'unknown'
+            )
+        except:
+            pass
+        
+        return jsonify({
+            'status': 'system_error',
+            'message': str(e)
+        }), 500
+
+@chatbot_bp.route('/telegram-gemini', methods=['POST'])
+def telegram_gemini_webhook():
+    """Webhook pour Telegram avec Gemini AI"""
+    try:
+        data = request.get_json()
+        
+        if 'message' in data:
+            message_data = data['message']
+            text = message_data.get('text', '').strip()
+            chat_id = message_data.get('chat', {}).get('id')
+            user_name = message_data.get('from', {}).get('first_name', 'Utilisateur')
+            
+            if not text or not chat_id:
+                return jsonify({'status': 'no_content'}), 200
+            
+            logger.info(f"📱 Message Telegram de {user_name} ({chat_id}): {text}")
+            
+            # Générer avec Gemini
+            result = generate_business_plan_with_gemini(text, str(chat_id))
+            
+            if result['success']:
+                # Message de succès pour Telegram
+                telegram_message = f"""🎉 Votre business plan est prêt !
+
+📋 {result['business_plan'].get('titre', 'Business Plan Personnalisé')}
+
+📊 {result['documents_analyzed']} documents analysés
+📁 2 fichiers générés (Excel + PDF)
+
+💾 Téléchargement: /download/{result['files']['excel']['filename']}"""
+                
+                # send_telegram_message(chat_id, telegram_message)
+                
+            return jsonify({'status': 'success'}), 200
+            
+    except Exception as e:
+        logger.error(f"Erreur webhook Telegram: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@chatbot_bp.route('/messenger-gemini', methods=['POST'])
+def messenger_gemini_webhook():
+    """Webhook pour Facebook Messenger avec Gemini AI"""
+    try:
+        data = request.get_json()
+        
+        if 'entry' in data:
+            for entry in data['entry']:
+                messaging = entry.get('messaging', [])
+                for message_event in messaging:
+                    if 'message' in message_event:
+                        sender_id = message_event['sender']['id']
+                        message_text = message_event['message'].get('text', '').strip()
+                        
+                        if message_text:
+                            logger.info(f"📱 Message Messenger de {sender_id}: {message_text}")
+                            
+                            # Générer avec Gemini
+                            result = generate_business_plan_with_gemini(message_text, sender_id)
+                            
+                            if result['success']:
+                                # Message pour Messenger
+                                messenger_message = f"✅ Business plan créé ! Titre: {result['business_plan'].get('titre', 'Plan Personnalisé')}"
+                                # send_messenger_message(sender_id, messenger_message)
+        
+        return jsonify({'status': 'success'}), 200
+        
+    except Exception as e:
+        logger.error(f"Erreur webhook Messenger: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@chatbot_bp.route('/test-generation', methods=['POST'])
+def test_generation():
+    """Endpoint de test pour la génération de business plan"""
+    try:
+        data = request.get_json()
+        user_message = data.get('message', 'Créer une startup de technologie innovante')
+        phone_number = data.get('phone', 'test_user')
+        
+        result = generate_business_plan_with_gemini(user_message, phone_number)
+        
+        return jsonify(result), 200 if result['success'] else 500
+        
+    except Exception as e:
+        logger.error(f"Erreur test génération: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# Fonctions d'envoi de messages (à implémenter selon votre provider)
+def send_whatsapp_message(phone_number, message):
+    """Envoie un message WhatsApp - à implémenter selon votre provider"""
+    # Exemple pour Twilio
+    # client = Client(account_sid, auth_token)
+    # client.messages.create(body=message, from_='whatsapp:+14155238886', to=f'whatsapp:{phone_number}')
+    logger.info(f"📤 Message WhatsApp à {phone_number}: {message[:100]}...")
+
+def send_whatsapp_document(phone_number, file_path, caption):
+    """Envoie un document WhatsApp - à implémenter selon votre provider"""
+    logger.info(f"📎 Document WhatsApp à {phone_number}: {file_path}")
+
+def send_telegram_message(chat_id, message):
+    """Envoie un message Telegram"""
+    logger.info(f"📤 Message Telegram à {chat_id}: {message[:100]}...")
+
+def send_messenger_message(sender_id, message):
+    """Envoie un message Messenger"""
+    logger.info(f"📤 Message Messenger à {sender_id}: {message[:100]}...")
+
+# Routes alternatives pour les webhooks sans préfixe /api/chatbot  
+# Récupération des fonctions originales avant renommage
+try:
+    # Ces fonctions existent dans le scope global depuis le début du fichier
+    telegram_webhook_original = globals()['telegram_webhook']
+    messenger_webhook_original = globals()['messenger_webhook']
+except KeyError:
+    # Si les fonctions n'existent pas, on va les définir comme des stubs
+    def telegram_webhook_original():
+        return jsonify({'error': 'Function not implemented'}), 501
+    def messenger_webhook_original():
+        return jsonify({'error': 'Function not implemented'}), 501
+
+# Fonctions pour exposer les webhooks sans préfixe /api/chatbot
+def whatsapp_webhook_public():
+    return whatsapp_webhook()
+
+def telegram_webhook_public():
+    return telegram_webhook_original()
+
+def messenger_webhook_public():
+    return messenger_webhook_original()
+
+@chatbot_bp.route('/test-gemini', methods=['POST'])
+def test_gemini_generation():
+    """Endpoint de test pour la génération avec Gemini"""
+    try:
+        data = request.get_json() or {}
+        test_message = data.get('message', 'Je veux créer une startup de technologie innovante dans le domaine de l\'IA')
+        phone_number = data.get('phone', 'test_user_12345')
+        
+        logger.info(f"🧪 Test Gemini - Message: {test_message}")
+        
+        # Générer le business plan avec Gemini
+        result = generate_business_plan_with_gemini(test_message, phone_number)
+        
+        if result['success']:
+            return jsonify({
+                'success': True,
+                'message': 'Business plan généré avec succès en mode test',
+                'business_plan_title': result['business_plan'].get('titre'),
+                'files_generated': {
+                    'excel': result['files']['excel']['filename'],
+                    'pdf': result['files']['pdf']['filename']
+                },
+                'documents_analyzed': result['documents_analyzed'],
+                'download_links': {
+                    'excel': f"/download/{result['files']['excel']['filename']}",
+                    'pdf': f"/download/{result['files']['pdf']['filename']}"
+                }
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': result['error'],
+                'message': 'Erreur lors de la génération du business plan'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"❌ Erreur test Gemini: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Erreur critique lors du test'
+        }), 500
 

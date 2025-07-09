@@ -39,17 +39,78 @@ class GeminiAnalysisService:
                 self.model = None
                 self.demo_mode = True
         
+    def _resolve_file_path(self, file_path: str) -> str:
+        """Résout le chemin de fichier en tenant compte de l'environnement d'exécution."""
+        try:
+            # Si le chemin est déjà absolu et existe, le retourner tel quel
+            if os.path.isabs(file_path) and os.path.exists(file_path):
+                return file_path
+            
+            # Essayer de résoudre depuis la racine du projet
+            project_root = Path(__file__).parent.parent.parent.resolve()
+            
+            # Si c'est un chemin relatif (commence par uploads/), le résoudre depuis la racine du projet
+            if file_path.startswith('uploads/'):
+                resolved_path = project_root / file_path
+                if resolved_path.exists():
+                    return str(resolved_path)
+            
+            # Si c'est un chemin relatif, essayer de le résoudre depuis le répertoire de travail actuel
+            if not os.path.isabs(file_path):
+                # Essayer depuis le répertoire de travail actuel
+                resolved_path = os.path.abspath(file_path)
+                if os.path.exists(resolved_path):
+                    return resolved_path
+                
+                # Essayer depuis la racine du projet
+                resolved_path = project_root / file_path
+                if resolved_path.exists():
+                    return str(resolved_path)
+            
+            # Si le chemin contient déjà le nom du projet, essayer de le reconstruire
+            if 'chatbotapp-business-plan' in file_path:
+                # Extraire le chemin relatif après 'chatbotapp-business-plan'
+                parts = file_path.split('chatbotapp-business-plan')
+                if len(parts) > 1:
+                    relative_path = parts[1].lstrip('/')
+                    resolved_path = project_root / relative_path
+                    if resolved_path.exists():
+                        return str(resolved_path)
+            
+            # Essayer de construire le chemin depuis la racine du projet
+            # En supposant que le fichier est dans uploads/templates/
+            filename = os.path.basename(file_path)
+            uploads_path = project_root / 'uploads' / 'templates' / filename
+            if uploads_path.exists():
+                return str(uploads_path)
+            
+            # Si rien ne fonctionne, retourner le chemin original
+            logger.warning(f"Impossible de résoudre le chemin: {file_path}")
+            return file_path
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la résolution du chemin {file_path}: {str(e)}")
+            return file_path
+        
     def extract_text_from_file(self, file_path: str, file_type: str) -> str:
         """Extrait le texte d'un fichier selon son type."""
         try:
+            # Résoudre le chemin du fichier
+            resolved_path = self._resolve_file_path(file_path)
+            logger.info(f"Tentative d'extraction depuis: {resolved_path}")
+            
+            if not os.path.exists(resolved_path):
+                logger.error(f"Fichier non trouvé: {resolved_path}")
+                return ""
+            
             if file_type.lower() == 'pdf':
-                return self._extract_from_pdf(file_path)
+                return self._extract_from_pdf(resolved_path)
             elif file_type.lower() in ['doc', 'docx']:
-                return self._extract_from_docx(file_path)
+                return self._extract_from_docx(resolved_path)
             elif file_type.lower() == 'txt':
-                return self._extract_from_txt(file_path)
+                return self._extract_from_txt(resolved_path)
             elif file_type.lower() in ['xls', 'xlsx']:
-                return self._extract_from_excel(file_path)
+                return self._extract_from_excel(resolved_path)
             else:
                 logger.warning(f"Type de fichier non supporté: {file_type}")
                 return ""
@@ -101,9 +162,90 @@ class GeminiAnalysisService:
             logger.error(f"Erreur extraction Excel: {str(e)}")
             return ""
     
-    def analyze_documents_for_business_plan(self, templates: List[Dict], user_request: str) -> Dict[str, Any]:
+    def _is_greeting(self, user_request: str) -> bool:
+        """Vérifie si la requête est une salutation."""
+        greeting_keywords = [
+            'bonjour', 'salut', 'hello', 'hi', 'coucou', 'bonsoir',
+            'bonne journée', 'bonne soirée', 'comment allez-vous',
+            'ça va', 'comment ça va', 'comment allez vous'
+        ]
+        
+        request_lower = user_request.lower()
+        return any(keyword in request_lower for keyword in greeting_keywords)
+    
+    def _is_mais_related(self, user_request: str) -> bool:
+        """Vérifie si la requête est liée spécifiquement au maïs."""
+        mais_keywords = [
+            'mais', 'maïs', 'corn', 'zea mays',
+            'culture de maïs', 'plantation de maïs', 'production de maïs',
+            'maïs grain', 'maïs fourrage', 'maïs doux',
+            'semis de maïs', 'récolte de maïs', 'irrigation maïs',
+            'fertilisation maïs', 'traitement maïs'
+        ]
+        
+        request_lower = user_request.lower()
+        return any(keyword in request_lower for keyword in mais_keywords)
+    
+    def _is_unlock_attempt(self, user_request: str) -> bool:
+        """Vérifie si la requête est une tentative de déblocage avec le code d'accès."""
+        return user_request.strip() == "join-mais-ai-generate"
+
+    def analyze_documents_for_business_plan(self, templates: List[Dict], user_request: str, user_id: str = None) -> Dict[str, Any]:
         """Analyse tous les templates de la base pour créer un business plan suivant strictement leur structure."""
         
+        # Vérifier si c'est une salutation
+        if self._is_greeting(user_request):
+            return {
+                'success': True,
+                'is_greeting': True,
+                'greeting_response': f"Bonjour ! Je suis votre assistant IA spécialisé dans la culture de maïs. Je peux vous aider à créer un business plan complet pour votre projet de culture de maïs. Dites-moi ce que vous souhaitez faire !",
+                'documents_analyzed': 0,
+                'demo_mode': self.demo_mode
+            }
+        
+        # Vérifier si c'est une tentative de déblocage
+        if self._is_unlock_attempt(user_request):
+            from src.services.rate_limiter import rate_limiter
+            if user_id:
+                success, message = rate_limiter.unlock_user(user_id, user_request.strip())
+                return {
+                    'success': True,
+                    'is_unlock_attempt': True,
+                    'unlock_success': success,
+                    'unlock_message': message,
+                    'documents_analyzed': 0,
+                    'demo_mode': self.demo_mode
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': "Impossible de traiter le code de déblocage sans identifiant utilisateur",
+                    'documents_analyzed': 0,
+                    'demo_mode': self.demo_mode
+                }
+        
+        # Vérifier le rate limiting
+        if user_id:
+            from src.services.rate_limiter import rate_limiter
+            can_request, message = rate_limiter.can_make_request(user_id)
+            if not can_request:
+                return {
+                    'success': False,
+                    'error': message,
+                    'is_rate_limited': True,
+                    'documents_analyzed': 0,
+                    'demo_mode': self.demo_mode
+                }
+        
+        # Vérifier si la requête est liée au maïs
+        if not self._is_mais_related(user_request):
+            return {
+                'success': False,
+                'error': "Désolé, je suis spécialisé uniquement dans la culture de maïs. Veuillez reformuler votre demande en lien avec le maïs (ex: culture de maïs sur 10 ha, production de maïs grain, etc.)",
+                'documents_analyzed': 0,
+                'demo_mode': self.demo_mode
+            }
+
         # Extraire et analyser le contenu de tous les templates
         documents_content = []
         business_plan_templates = []
@@ -156,6 +298,13 @@ class GeminiAnalysisService:
                 business_plan_data = json.loads(response.text)
             
             logger.info(f"✅ Business plan généré avec succès (mode: {'DEMO' if self.demo_mode else 'GEMINI'})")
+            
+            # Incrémenter le compteur de requêtes si un user_id est fourni
+            if user_id:
+                from src.services.rate_limiter import rate_limiter
+                rate_limiter.increment_request(user_id)
+                logger.info(f"📊 Compteur incrémenté pour l'utilisateur {user_id}")
+            
             return {
                 'success': True,
                 'business_plan': business_plan_data,
@@ -301,23 +450,44 @@ class GeminiAnalysisService:
         }
     
     def _extract_project_type(self, user_request: str) -> str:
-        """Extrait le type de projet de la demande utilisateur."""
+        """Extrait le type de projet agricole de la demande utilisateur."""
         request_lower = user_request.lower()
         
-        if 'startup' in request_lower:
-            return 'startup innovante'
-        elif any(word in request_lower for word in ['restaurant', 'café', 'bar']):
-            return 'établissement de restauration'
-        elif any(word in request_lower for word in ['boutique', 'magasin', 'commerce']):
-            return 'commerce de détail'
-        elif any(word in request_lower for word in ['application', 'app', 'logiciel']):
-            return 'solution technologique'
-        elif any(word in request_lower for word in ['livraison', 'transport']):
-            return 'service de livraison'
-        elif any(word in request_lower for word in ['consulting', 'conseil', 'service']):
-            return 'entreprise de services'
+        # Cultures
+        if any(word in request_lower for word in ['mais', 'maïs']):
+            return 'culture de maïs'
+        elif 'manioc' in request_lower:
+            return 'culture de manioc'
+        elif 'riz' in request_lower:
+            return 'culture de riz'
+        elif 'soja' in request_lower:
+            return 'culture de soja'
+        elif any(word in request_lower for word in ['maraîcher', 'légume', 'fruit']):
+            return 'maraîchage'
+        
+        # Élevage
+        elif any(word in request_lower for word in ['volaille', 'poulet', 'poule']):
+            return 'élevage de volailles'
+        elif any(word in request_lower for word in ['bovin', 'vache', 'boeuf']):
+            return 'élevage bovin'
+        elif any(word in request_lower for word in ['porc', 'porcin']):
+            return 'élevage porcin'
+        elif any(word in request_lower for word in ['mouton', 'ovin', 'chèvre', 'caprin']):
+            return 'élevage ovin/caprin'
+        elif 'élevage' in request_lower:
+            return 'projet d\'élevage'
+            
+        # Agriculture spécialisée
+        elif 'bio' in request_lower or 'biologique' in request_lower:
+            return 'agriculture biologique'
+        elif 'permaculture' in request_lower:
+            return 'projet de permaculture'
+        elif 'serre' in request_lower or 'greenhouse' in request_lower:
+            return 'culture sous serre'
+        
+        # Par défaut
         else:
-            return 'entreprise innovante'
+            return 'projet agricole'
     
     def _generate_financial_projections_from_templates(self, project_type: str, bp_analysis: Dict) -> Dict[str, Any]:
         """Génère des projections financières basées sur les templates analysés."""

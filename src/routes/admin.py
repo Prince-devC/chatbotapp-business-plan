@@ -258,10 +258,14 @@ def upload_business_plan_template():
             file_type = filename.rsplit('.', 1)[1].lower()
             print(f"Type de fichier: {file_type}")
 
+            # Stocker le chemin relatif au lieu du chemin absolu pour la portabilité
+            relative_path = f"uploads/templates/{filename}"
+            print(f"Chemin relatif stocké: {relative_path}")
+
             template = BusinessPlanTemplate(
                 name=name,
                 description=description,
-                file_path=file_path,
+                file_path=relative_path,
                 file_type=file_type,
                 category=category,
                 created_by=admin_id

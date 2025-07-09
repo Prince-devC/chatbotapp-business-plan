@@ -42,6 +42,10 @@ class DocumentGenerator:
             subheader_font = Font(size=12, bold=True)
             normal_font = Font(size=10)
             
+            # 0. Feuille de Couverture
+            ws_cover = wb.create_sheet("Couverture")
+            self._create_excel_cover_sheet(ws_cover, business_plan_data, header_font, header_fill, subheader_font)
+            
             # 1. Feuille Résumé Exécutif
             ws_resume = wb.create_sheet("Résumé Exécutif")
             self._create_excel_resume_sheet(ws_resume, business_plan_data, header_font, header_fill, subheader_font)
@@ -65,6 +69,9 @@ class DocumentGenerator:
             # 6. Feuille Risques & Opportunités
             ws_risks = wb.create_sheet("Risques & Opportunités")
             self._create_excel_risks_sheet(ws_risks, business_plan_data, header_font, header_fill, subheader_font)
+            
+            # Définir la feuille de couverture comme active
+            wb.active = wb["Couverture"]
             
             wb.save(filepath)
             logger.info(f"Fichier Excel généré: {filepath}")
@@ -108,6 +115,11 @@ class DocumentGenerator:
             story.append(Paragraph(f"ITINÉRAIRE TECHNIQUE - {business_plan_data.get('titre', 'Projet')}", title_style))
             story.append(Spacer(1, 0.5*inch))
             story.append(Paragraph(f"Document technique généré le {datetime.now().strftime('%d/%m/%Y')}", styles['Normal']))
+            story.append(Spacer(1, 0.5*inch))
+            
+            # Demande originale
+            story.append(Paragraph("DEMANDE ORIGINALE", heading_style))
+            story.append(Paragraph(business_plan_data.get('resume_executif', {}).get('description_projet', ''), styles['Normal']))
             story.append(Spacer(1, 1*inch))
             
             # Table des matières
@@ -151,6 +163,38 @@ class DocumentGenerator:
         except Exception as e:
             logger.error(f"Erreur génération PDF: {str(e)}")
             raise
+    
+    def _create_excel_cover_sheet(self, ws, data, header_font, header_fill, subheader_font):
+        """Crée la feuille de couverture Excel avec la demande utilisateur."""
+        # Titre principal
+        ws['A1'] = data.get('titre', 'BUSINESS PLAN')
+        ws['A1'].font = Font(size=20, bold=True, color="000000")
+        ws.merge_cells('A1:E1')
+        ws['A1'].alignment = Alignment(horizontal='center')
+        
+        # Date de génération
+        ws['A3'] = f"Document généré le {datetime.now().strftime('%d/%m/%Y')}"
+        ws['A3'].font = Font(size=12)
+        ws.merge_cells('A3:E3')
+        ws['A3'].alignment = Alignment(horizontal='center')
+        
+        # Demande originale
+        ws['A5'] = "DEMANDE ORIGINALE"
+        ws['A5'].font = header_font
+        ws['A5'].fill = header_fill
+        ws.merge_cells('A5:E5')
+        ws['A5'].alignment = Alignment(horizontal='center')
+        
+        ws['A6'] = data.get('resume_executif', {}).get('description_projet', '')
+        ws['A6'].font = Font(size=12)
+        ws['A6'].alignment = Alignment(wrap_text=True)
+        ws.merge_cells('A6:E6')
+        
+        # Ajuster les dimensions
+        ws.row_dimensions[6].height = 60
+        ws.column_dimensions['A'].width = 25
+        for col in ['B', 'C', 'D', 'E']:
+            ws.column_dimensions[col].width = 20
     
     def _create_excel_resume_sheet(self, ws, data, header_font, header_fill, subheader_font):
         """Crée la feuille résumé exécutif Excel."""

@@ -47,6 +47,13 @@ class WhatsAppService:
             
         except TwilioRestException as e:
             logger.error(f"❌ Erreur Twilio: {e.msg} (Code: {e.code})")
+            
+            # Gérer spécifiquement la limite quotidienne
+            if e.code == 63038:
+                logger.warning("📊 Limite quotidienne Twilio atteinte - Mode simulation activé")
+                logger.info(f"📤 [SIMULÉ - LIMITE] Message WhatsApp à {to_number}: {message[:100]}...")
+                return True
+            
             return False
         except Exception as e:
             logger.error(f"❌ Erreur envoi message WhatsApp: {str(e)}")
@@ -76,6 +83,13 @@ class WhatsAppService:
             
         except TwilioRestException as e:
             logger.error(f"❌ Erreur Twilio document: {e.msg} (Code: {e.code})")
+            
+            # Gérer spécifiquement la limite quotidienne
+            if e.code == 63038:
+                logger.warning("📊 Limite quotidienne Twilio atteinte - Mode simulation activé")
+                logger.info(f"📎 [SIMULÉ - LIMITE] Document WhatsApp à {to_number}: {file_url}")
+                return True
+            
             return False
         except Exception as e:
             logger.error(f"❌ Erreur envoi document WhatsApp: {str(e)}")
@@ -86,15 +100,30 @@ class WhatsAppService:
         try:
             success = True
             
-            # Envoyer le fichier Excel (Business Plan)
-            excel_caption = f"📊 Business Plan Excel: {business_plan_title}"
-            if not self.send_document(to_number, excel_url, excel_caption):
-                success = False
+            # Vérifier si les URLs sont accessibles publiquement
+            if not excel_url.startswith('http'):
+                logger.warning(f"⚠️ URL Excel non publique: {excel_url}")
+                # Envoyer un message informatif au lieu du fichier
+                info_message = f"📊 Business Plan Excel: {business_plan_title}\n💾 Téléchargez depuis: {excel_url}"
+                if not self.send_message(to_number, info_message):
+                    success = False
+            else:
+                # Envoyer le fichier Excel (Business Plan)
+                excel_caption = f"📊 Business Plan Excel: {business_plan_title}"
+                if not self.send_document(to_number, excel_url, excel_caption):
+                    success = False
             
-            # Envoyer le fichier PDF (Itinéraire Technique)
-            pdf_caption = f"🔧 Itinéraire Technique PDF: {business_plan_title}"
-            if not self.send_document(to_number, pdf_url, pdf_caption):
-                success = False
+            if not pdf_url.startswith('http'):
+                logger.warning(f"⚠️ URL PDF non publique: {pdf_url}")
+                # Envoyer un message informatif au lieu du fichier
+                info_message = f"🔧 Itinéraire Technique PDF: {business_plan_title}\n💾 Téléchargez depuis: {pdf_url}"
+                if not self.send_message(to_number, info_message):
+                    success = False
+            else:
+                # Envoyer le fichier PDF (Itinéraire Technique)
+                pdf_caption = f"🔧 Itinéraire Technique PDF: {business_plan_title}"
+                if not self.send_document(to_number, pdf_url, pdf_caption):
+                    success = False
             
             return success
             
@@ -108,11 +137,11 @@ class WhatsAppService:
     
     def send_welcome_message(self, to_number: str, user_request: str) -> bool:
         """Envoie le message de bienvenue."""
-        welcome_message = f"""🤖 *Bonjour !* Je suis votre assistant IA pour la création de business plans.
+        welcome_message = f"""
 
 📝 *Votre demande:* {user_request}
 
-⏳ Je vais analyser tous les documents de notre base de données et créer un business plan complet personnalisé pour votre projet...
+⏳ Je vais analyser tous les documents de notre base de données et créer un business plan complet personnalisé pour votre projet de culture de maïs...
 
 📊 Génération en cours des fichiers Excel et PDF..."""
         
@@ -125,47 +154,42 @@ class WhatsAppService:
         if len(resume) > 200:
             resume = resume[:200] + "..."
         
-        success_message = f"""✅ *Business Plan généré avec succès !*
+        # S'assurer que l'URL de base n'a pas de slash à la fin
+        base_url = download_base_url.rstrip('/')
+        
+        # Construire les URLs complètes
+        excel_url = f"{base_url}/api/gemini/download/{files['excel']['filename']}"
+        pdf_url = f"{base_url}/api/gemini/download/{files['pdf']['filename']}"
+        
+        success_message = f"""✅ *Business Plan Maïs généré avec succès !*
 
-📋 *Titre:* {business_plan.get('titre', 'Business Plan Personnalisé')}
+📋 *Titre:* {business_plan.get('titre', 'Business Plan Maïs Personnalisé')}
 
-📈 *Résumé Exécutif:*
-{resume}
+📈 *Résumé:* {resume[:150]}...
 
 📊 *Documents analysés:* {documents_analyzed}
 
-         📁 *Fichiers générés:*
-         • 📊 Business Plan Excel: {files['excel']['filename']}
-         • 🔧 Itinéraire Technique PDF: {files['pdf']['filename']}
-         
-         💾 Téléchargement direct:
-         Business Plan: {download_base_url}/download/{files['excel']['filename']}
-         Itinéraire Technique: {download_base_url}/download/{files['pdf']['filename']}
-         
-         🎯 *Votre business plan Excel inclut:*
-         ✓ Analyse de marché complète
-         ✓ Stratégie marketing détaillée
-         ✓ Projections financières sur 3 ans
-         ✓ Plan opérationnel complet
-         ✓ Analyse des risques et opportunités
-         
-         🔧 *Votre itinéraire technique PDF inclut:*
-         ✓ Architecture technique détaillée
-         ✓ Spécifications de développement
-         ✓ Planning d'implémentation
-         ✓ Stack technologique recommandée
-         ✓ Gestion des contraintes et solutions
-         
-         📱 Les fichiers sont également envoyés directement dans ce chat."""
+📁 *Fichiers générés:*
+• 📊 Business Plan Excel: {files['excel']['filename']}
+• 🔧 Itinéraire Technique PDF: {files['pdf']['filename']}
+
+💾 *Téléchargement:*
+• Business Plan: {excel_url}
+• Itinéraire Technique: {pdf_url}
+
+🎯 *Inclus:* Analyse marché, stratégie marketing, projections financières, plan opérationnel
+
+🔧 *Technique:* Architecture, spécifications, planning, stack technologique
+
+🌽 *Spécialisé maïs uniquement*
+
+📱 Fichiers envoyés dans ce chat."""
         
         # Envoyer le message
         if not self.send_message(to_number, success_message):
             return False
         
         # Envoyer les fichiers
-        excel_url = f"{download_base_url}/download/{files['excel']['filename']}"
-        pdf_url = f"{download_base_url}/download/{files['pdf']['filename']}"
-        
         return self.send_business_plan_files(
             to_number, 
             excel_url, 
@@ -173,20 +197,42 @@ class WhatsAppService:
             business_plan.get('titre', 'Business Plan')
         )
     
-    def send_error_message(self, to_number: str, error: str) -> bool:
+    def send_error_message(self, to_number: str, error: str, is_rate_limited: bool = False) -> bool:
         """Envoie un message d'erreur."""
-        error_message = f"""❌ *Erreur lors de la génération*
+        if is_rate_limited:
+            error_message = f"""🚫 *Limite d'utilisation atteinte*
+
+{error}
+
+🔓 *Pour continuer à utiliser le service:*
+• Envoyez le code d'accès: `**********`
+• Ce code vous débloquera pour un accès illimité
+
+📊 *Votre utilisation actuelle:*
+• Vous avez utilisé 5 requêtes gratuites
+• Après le déblocage, vous pourrez faire des requêtes illimitées
+
+💡 *Le code d'accès est:* `**********`"""
+        else:
+            error_message = f"""❌ *Erreur lors de la génération*
 
 Je n'ai pas pu créer votre business plan.
 *Erreur:* {error}
 
-🔄 Veuillez réessayer avec une description plus détaillée de votre projet.
+🔄 Veuillez réessayer avec une description plus détaillée de votre projet de culture de maïs.
 
 💡 *Conseils pour améliorer votre demande:*
-• Décrivez clairement votre secteur d'activité
-• Mentionnez votre cible client principale
-• Précisez votre proposition de valeur unique
-• Indiquez votre modèle économique
+• Décrivez clairement votre projet de culture de maïs
+• Mentionnez la superficie (ex: 10 ha, 5 hectares)
+• Précisez le type de maïs (grain, fourrage, doux)
+• Indiquez vos besoins en irrigation ou fertilisation
+
+🌽 *Exemples de demandes valides pour maïs:*
+• "Je veux faire du maïs sur 10 ha"
+• "Culture de maïs grain avec irrigation"
+• "Production de maïs fourrage sur 5 hectares"
+
+⚠️ *ATTENTION : Je suis spécialisé uniquement sur la culture de maïs*
 
 📞 Pour un support technique, contactez notre équipe."""
         
@@ -205,6 +251,30 @@ Notre service rencontre actuellement des difficultés techniques.
 📧 En cas de problème persistant, contactez-nous à support@votre-domaine.com"""
         
         return self.send_message(to_number, system_error_message)
+    
+    def send_unlock_message(self, to_number: str, success: bool, message: str) -> bool:
+        """Envoie un message de déblocage."""
+        if success:
+            unlock_message = f"""✅ *Compte débloqué avec succès !*
+
+{message}
+
+🎉 *Vous pouvez maintenant:*
+• Faire des requêtes illimitées
+• Générer autant de business plans que vous voulez
+• Accéder à toutes les fonctionnalités
+
+🚀 *Envoyez votre prochaine demande de business plan pour maïs !*"""
+        else:
+            unlock_message = f"""❌ *Échec du déblocage*
+
+{message}
+
+🔑 *Vérifiez que vous avez bien envoyé:* `**********`
+
+💡 *Le code doit être exactement:* `**********`"""
+        
+        return self.send_message(to_number, unlock_message)
     
     def get_webhook_validation_token(self) -> Optional[str]:
         """Retourne le token de validation pour les webhooks WhatsApp."""

@@ -86,7 +86,13 @@ def analyze_and_generate_business_plan():
         # Générer Excel si demandé
         if generate_excel:
             try:
-                excel_filename = f"business_plan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                # Créer un nom de fichier descriptif pour le business plan
+                project_type = business_plan_data.get('titre', '').replace('Business Plan - ', '').strip()
+                # Nettoyer le nom de fichier
+                safe_project_type = "".join(c for c in project_type if c.isalnum() or c in (' ', '-', '_')).rstrip()
+                safe_project_type = safe_project_type.replace(' ', '_')[:30]  # Limiter la longueur
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                excel_filename = f"business_plan_{safe_project_type}_{timestamp}.xlsx"
                 excel_path = doc_generator.generate_excel_business_plan(business_plan_data, excel_filename)
                 generated_files.append({
                     'type': 'excel',
@@ -101,7 +107,13 @@ def analyze_and_generate_business_plan():
         # Générer PDF si demandé
         if generate_pdf:
             try:
-                pdf_filename = f"business_plan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                # Créer un nom de fichier descriptif pour l'itinéraire technique
+                project_type = business_plan_data.get('titre', '').replace('Business Plan - ', '').strip()
+                # Nettoyer le nom de fichier
+                safe_project_type = "".join(c for c in project_type if c.isalnum() or c in (' ', '-', '_')).rstrip()
+                safe_project_type = safe_project_type.replace(' ', '_')[:30]  # Limiter la longueur
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                pdf_filename = f"itineraire_technique_{safe_project_type}_{timestamp}.pdf"
                 pdf_path = doc_generator.generate_pdf_business_plan(business_plan_data, pdf_filename)
                 generated_files.append({
                     'type': 'pdf',
@@ -180,13 +192,21 @@ def whatsapp_webhook():
                 
                 # Générer Excel et PDF
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                project_type = result['business_plan'].get('titre', '').replace('Business Plan - ', '').strip()
+                # Nettoyer le nom de fichier
+                safe_project_type = "".join(c for c in project_type if c.isalnum() or c in (' ', '-', '_')).rstrip()
+                safe_project_type = safe_project_type.replace(' ', '_')[:30]  # Limiter la longueur
+                
+                excel_filename = f"business_plan_{safe_project_type}_{timestamp}.xlsx"
+                pdf_filename = f"itineraire_technique_{safe_project_type}_{timestamp}.pdf"
+                
                 excel_path = doc_generator.generate_excel_business_plan(
                     result['business_plan'], 
-                    f"business_plan_whatsapp_{timestamp}.xlsx"
+                    excel_filename
                 )
                 pdf_path = doc_generator.generate_pdf_business_plan(
                     result['business_plan'], 
-                    f"business_plan_whatsapp_{timestamp}.pdf"
+                    pdf_filename
                 )
                 
                 logger.info(f"Business plan généré pour WhatsApp {phone_number}")
@@ -204,8 +224,7 @@ def whatsapp_webhook():
         logger.error(f"Erreur webhook WhatsApp: {str(e)}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-@gemini_bp.route('/download/<filename>')
-@jwt_required()
+@gemini_bp.route('/download/<path:filename>')
 def download_generated_file(filename):
     """Télécharge un fichier généré"""
     try:
@@ -213,9 +232,17 @@ def download_generated_file(filename):
         project_root = Path(__file__).parent.parent.parent.resolve()
         file_path = os.path.join(project_root, 'generated_business_plans', filename)
         
-        if not os.path.exists(file_path):
+        logger.info(f"Tentative téléchargement: {file_path}")
+        
+        # Vérifier si le fichier existe
+        file_exists = os.path.exists(file_path)
+        logger.info(f"Fichier existe: {file_exists}")
+        
+        if not file_exists:
+            logger.error(f"Fichier non trouvé: {file_path}")
             return jsonify({'error': 'Fichier non trouvé'}), 404
         
+        # Déterminer le type MIME
         if filename.endswith('.xlsx'):
             mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         elif filename.endswith('.pdf'):
@@ -223,8 +250,22 @@ def download_generated_file(filename):
         else:
             mimetype = 'application/octet-stream'
         
-        return send_file(file_path, mimetype=mimetype, as_attachment=True, download_name=filename)
+        # Envoyer le fichier avec le bon type MIME
+        response = send_file(
+            file_path,
+            mimetype=mimetype,
+            as_attachment=True,
+            download_name=filename,
+            conditional=True
+        )
+        
+        # Ajouter les headers CORS
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        
+        return response
         
     except Exception as e:
         logger.error(f"Erreur téléchargement {filename}: {str(e)}")
-        return jsonify({'error': 'Erreur lors du téléchargement'}), 500
+        return jsonify({'error': 'Erreur lors du téléchargement', 'details': str(e)}), 500

@@ -361,33 +361,8 @@ def whatsapp_webhook():
                     # Importer le service WhatsApp
                     from src.services.whatsapp_service import whatsapp_service
                     
-                    # Vérifier si c'est une commande /start
-                    if body.strip().lower() == '/start':
-                        welcome_text = """🤖 *Bienvenue dans le Générateur de Business Plan IA* 
-
-Je peux créer un business plan complet pour votre projet d'entreprise !
-
-📋 *Comment ça marche :*
-• Commencez votre message par "Je veux"
-• Décrivez votre idée d'entreprise
-• Je génère automatiquement votre business plan
-
-💡 *Exemples :*
-• "Je veux créer une startup de livraison de repas"
-• "Je veux ouvrir un salon de coiffure"
-• "Je veux lancer une application mobile"
-
-📄 Vous recevrez 2 fichiers :
-• 📊 Business Plan Excel (avec projections financières)
-• 📋 PDF Technique (spécifications détaillées)
-
-Tapez votre idée en commençant par "Je veux" pour commencer ! 🚀"""
-                        
-                        whatsapp_service.send_simple_message(from_number, welcome_text)
-                        logger.info(f"✅ Message d'accueil envoyé à {from_number}")
-                        
                     # Vérifier si le message commence par "je veux"
-                    elif body.strip().lower().startswith('je veux'):
+                    if body.strip().lower().startswith('je veux'):
                         # Envoyer le message de bienvenue
                         whatsapp_service.send_welcome_message(from_number, body)
                         
@@ -412,31 +387,52 @@ Tapez votre idée en commençant par "Je veux" pour commencer ! 🚀"""
                             
                             logger.info(f"✅ Business plan généré avec succès pour {from_number}")
                         else:
-                            # Envoyer le message d'erreur
-                            whatsapp_service.send_error_message(from_number, result['error'])
-                            logger.error(f"❌ Erreur génération pour {from_number}: {result['error']}")
+                            # Gérer les différents types d'erreurs
+                            if result.get('is_unlock_attempt'):
+                                # Tentative de déblocage
+                                whatsapp_service.send_unlock_message(
+                                    from_number, 
+                                    result.get('unlock_success', False), 
+                                    result.get('unlock_message', '')
+                                )
+                                logger.info(f"🔓 Tentative de déblocage pour {from_number}: {result.get('unlock_success', False)}")
+                            elif result.get('is_rate_limited'):
+                                # Erreur de rate limiting
+                                whatsapp_service.send_error_message(from_number, result['error'], is_rate_limited=True)
+                                logger.warning(f"🚫 Rate limit atteint pour {from_number}")
+                            else:
+                                # Erreur normale
+                                whatsapp_service.send_error_message(from_number, result['error'])
+                                logger.error(f"❌ Erreur génération pour {from_number}: {result['error']}")
                     
                     else:
-                        # Message pour guider l'utilisateur
-                        help_text = """❓ *Comment utiliser le générateur de Business Plan :*
+                        # Afficher le message de bienvenue pour tous les autres messages
+                        welcome_text = """🤖 *Bonjour ! Je suis votre assistant IA spécialisé dans la culture de maïs*
 
-🔄 Tapez */start* pour voir le message d'accueil
+Je peux créer un business plan complet pour votre projet de culture de maïs !
 
-💡 *Ou commencez votre message par "Je veux"* suivi de votre idée :
+📋 *Comment ça marche :*
+• Commencez votre message par "Je veux"
+• Décrivez votre projet de culture de maïs
+• Je génère automatiquement votre business plan
 
-✅ *Exemples corrects :*
-• "Je veux créer une startup de livraison"
-• "Je veux ouvrir un restaurant"
-• "Je veux lancer une boutique en ligne"
+💡 *Exemples pour maïs :*
+• "Je veux faire du maïs sur 10 ha"
+• "Je veux cultiver du maïs grain"
+• "Je veux produire du maïs fourrage"
 
-❌ *Évitez :*
-• Messages généraux sans "Je veux"
-• Questions simples
+📄 Vous recevrez 2 fichiers :
+• 📊 Business Plan Excel (avec projections financières)
+• 📋 PDF Technique (spécifications détaillées)
 
-Essayez maintenant ! 🚀"""
+📊 *Limite d'utilisation : 5 requêtes gratuites par utilisateur*
+
+🌽 *ATTENTION : Spécialisé uniquement sur la culture de maïs*
+
+Tapez votre projet de maïs en commençant par "Je veux" pour commencer ! 🚀"""
                         
-                        whatsapp_service.send_simple_message(from_number, help_text)
-                        logger.info(f"📤 Message d'aide envoyé à {from_number}")
+                        whatsapp_service.send_simple_message(from_number, welcome_text)
+                        logger.info(f"✅ Message de bienvenue envoyé à {from_number}")
         except Exception as bot_error:
             logger.error(f"💥 Erreur critique génération: {str(bot_error)}")
             try:
@@ -757,29 +753,48 @@ def generate_business_plan_with_gemini(user_message, phone_number):
         # Initialiser Gemini
         gemini_service = GeminiAnalysisService()
         
-        # Analyser avec Gemini
-        analysis_result = gemini_service.analyze_documents_for_business_plan(templates, user_message)
+        # Utiliser le numéro de téléphone comme identifiant utilisateur pour le rate limiting
+        user_id = phone_number
+        
+        # Analyser avec Gemini (incluant le rate limiting)
+        analysis_result = gemini_service.analyze_documents_for_business_plan(templates, user_message, user_id)
+        
+        # Gérer les salutations
+        if analysis_result.get('is_greeting'):
+            return {
+                'success': True,
+                'is_greeting': True,
+                'greeting_response': analysis_result.get('greeting_response'),
+                'business_plan': None,
+                'files': None,
+                'documents_analyzed': 0
+            }
         
         if not analysis_result['success']:
             return {
                 'success': False,
-                'error': f"Erreur analyse Gemini: {analysis_result.get('error')}"
+                'error': analysis_result.get('error', 'Erreur lors de la génération'),
+                'is_rate_limited': analysis_result.get('is_rate_limited', False),
+                'is_unlock_attempt': analysis_result.get('is_unlock_attempt', False),
+                'unlock_success': analysis_result.get('unlock_success', False),
+                'unlock_message': analysis_result.get('unlock_message', '')
             }
         
         business_plan_data = analysis_result['business_plan']
         
-        # Générer les fichiers
+        # Générer les fichiers Excel et PDF
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        project_type = business_plan_data.get('titre', '').replace('Business Plan - ', '').strip()
+        # Nettoyer le nom de fichier
+        safe_project_type = "".join(c for c in project_type if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        safe_project_type = safe_project_type.replace(' ', '_')[:30]  # Limiter la longueur
+        
+        excel_filename = f"business_plan_{safe_project_type}_{timestamp}.xlsx"
+        pdf_filename = f"itineraire_technique_{safe_project_type}_{timestamp}.pdf"
+        
         doc_generator = DocumentGenerator()
         
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        safe_phone = phone_number.replace('+', '').replace(' ', '')
-        
-        # Générer Excel
-        excel_filename = f"business_plan_{safe_phone}_{timestamp}.xlsx"
         excel_path = doc_generator.generate_excel_business_plan(business_plan_data, excel_filename)
-        
-        # Générer PDF
-        pdf_filename = f"business_plan_{safe_phone}_{timestamp}.pdf"
         pdf_path = doc_generator.generate_pdf_business_plan(business_plan_data, pdf_filename)
         
         return {
@@ -848,13 +863,62 @@ def whatsapp_gemini_webhook():
         # Importer le service WhatsApp
         from src.services.whatsapp_service import whatsapp_service
         
-        # Envoyer le message de bienvenue
-        whatsapp_service.send_welcome_message(phone_number, message)
-        
-        # Générer le business plan avec Gemini
-        result = generate_business_plan_with_gemini(message, phone_number)
+        # Vérifier si le message commence par "je veux"
+        if message.strip().lower().startswith('je veux'):
+            # Envoyer le message de bienvenue
+            whatsapp_service.send_welcome_message(phone_number, message)
+            
+            # Générer le business plan avec Gemini
+            result = generate_business_plan_with_gemini(message, phone_number)
+        else:
+            # Afficher le message de bienvenue pour tous les autres messages
+            welcome_text = """🤖 *Bonjour ! Je suis votre assistant IA spécialisé dans la culture de maïs*
+
+Je peux créer un business plan complet pour votre projet de culture de maïs !
+
+📋 *Comment ça marche :*
+• Commencez votre message par "Je veux"
+• Décrivez votre projet de culture de maïs
+• Je génère automatiquement votre business plan
+
+💡 *Exemples pour maïs :*
+• "Je veux faire du maïs sur 10 ha"
+• "Je veux cultiver du maïs grain"
+• "Je veux produire du maïs fourrage"
+
+📄 Vous recevrez 2 fichiers :
+• 📊 Business Plan Excel (avec projections financières)
+• 📋 PDF Technique (spécifications détaillées)
+
+📊 *Limite d'utilisation : 5 requêtes gratuites par utilisateur*
+
+🌽 *ATTENTION : Spécialisé uniquement sur la culture de maïs*
+
+Tapez votre projet de maïs en commençant par "Je veux" pour commencer ! 🚀"""
+            
+            whatsapp_service.send_simple_message(phone_number, welcome_text)
+            logger.info(f"✅ Message de bienvenue envoyé à {phone_number}")
+            
+            return jsonify({
+                'status': 'welcome_sent',
+                'message': 'Message de bienvenue envoyé',
+                'phone_number': phone_number
+            }), 200
         
         if result['success']:
+            # Gérer les salutations
+            if result.get('is_greeting'):
+                # Envoyer le message de salutation
+                whatsapp_service.send_simple_message(phone_number, result['greeting_response'])
+                
+                logger.info(f"✅ Salutation envoyée pour {phone_number}")
+                
+                return jsonify({
+                    'status': 'greeting_sent',
+                    'message': 'Salutation envoyée',
+                    'phone_number': phone_number
+                }), 200
+            
             business_plan = result['business_plan']
             files = result['files']
             
@@ -882,15 +946,30 @@ def whatsapp_gemini_webhook():
             }), 200
             
         else:
-            # Envoyer le message d'erreur
-            whatsapp_service.send_error_message(phone_number, result['error'])
-            
-            logger.error(f"❌ Erreur génération pour {phone_number}: {result['error']}")
+            # Gérer les différents types d'erreurs
+            if result.get('is_unlock_attempt'):
+                # Tentative de déblocage
+                whatsapp_service.send_unlock_message(
+                    phone_number, 
+                    result.get('unlock_success', False), 
+                    result.get('unlock_message', '')
+                )
+                logger.info(f"🔓 Tentative de déblocage pour {phone_number}: {result.get('unlock_success', False)}")
+            elif result.get('is_rate_limited'):
+                # Erreur de rate limiting
+                whatsapp_service.send_error_message(phone_number, result['error'], is_rate_limited=True)
+                logger.warning(f"🚫 Rate limit atteint pour {phone_number}")
+            else:
+                # Erreur normale
+                whatsapp_service.send_error_message(phone_number, result['error'])
+                logger.error(f"❌ Erreur génération pour {phone_number}: {result['error']}")
             
             return jsonify({
                 'status': 'error',
                 'message': result['error'],
-                'phone_number': phone_number
+                'phone_number': phone_number,
+                'is_rate_limited': result.get('is_rate_limited', False),
+                'is_unlock_attempt': result.get('is_unlock_attempt', False)
             }), 200
         
     except Exception as e:
@@ -1081,4 +1160,3 @@ def test_gemini_generation():
             'error': str(e),
             'message': 'Erreur critique lors du test'
         }), 500
-

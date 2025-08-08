@@ -1,1 +1,16 @@
-{}
+{
+  "1234567890": {
+    "requests_count": 5,
+    "is_unlocked": false,
+    "first_request": "2025-07-25T11:39:10.338293",
+    "last_request": "2025-07-25T11:53:56.490236",
+    "unlock_date": null
+  },
+  "+1234567890": {
+    "requests_count": 1,
+    "is_unlocked": false,
+    "first_request": "2025-07-25T11:53:56.303094",
+    "last_request": "2025-07-25T11:53:56.342326",
+    "unlock_date": null
+  }
+}

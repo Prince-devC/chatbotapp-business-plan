@@ -173,6 +173,22 @@ class User(db.Model):
     phone_number = db.Column(db.String(20))
     email = db.Column(db.String(100))
     language_code = db.Column(db.String(10), default='fr')
+    
+    # Nouveaux champs pour le profil agricole
+    user_type = db.Column(db.String(20), default='individuel')  # 'individuel', 'cooperative'
+    gender = db.Column(db.String(10))  # 'homme', 'femme', 'autre'
+    zone_agro_ecologique = db.Column(db.String(100))  # Zone agro-écologique
+    farming_objective = db.Column(db.String(100))  # 'subsistance', 'commercial', 'mixte'
+    land_unit = db.Column(db.String(20), default='ha')  # 'ha', 'm2', 'canti'
+    land_area = db.Column(db.Float)  # Surface en unité spécifiée
+    farming_experience = db.Column(db.String(20))  # 'debutant', 'intermediaire', 'expert'
+    primary_culture = db.Column(db.String(50))  # 'mais', 'ananas', etc.
+    
+    # Champs pour coopératives
+    cooperative_name = db.Column(db.String(200))
+    cooperative_members = db.Column(db.Integer)
+    cooperative_commune = db.Column(db.String(100))
+    
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_interaction = db.Column(db.DateTime)
@@ -191,6 +207,17 @@ class User(db.Model):
             'phone_number': self.phone_number,
             'email': self.email,
             'language_code': self.language_code,
+            'user_type': self.user_type,
+            'gender': self.gender,
+            'zone_agro_ecologique': self.zone_agro_ecologique,
+            'farming_objective': self.farming_objective,
+            'land_unit': self.land_unit,
+            'land_area': self.land_area,
+            'farming_experience': self.farming_experience,
+            'primary_culture': self.primary_culture,
+            'cooperative_name': self.cooperative_name,
+            'cooperative_members': self.cooperative_members,
+            'cooperative_commune': self.cooperative_commune,
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'last_interaction': self.last_interaction.isoformat() if self.last_interaction else None

@@ -16,6 +16,9 @@ from src.routes.chatbot import chatbot_bp
 from src.routes.business_plan import business_plan_bp
 from src.routes.user import user_bp
 from src.routes.gemini import gemini_bp
+from src.routes.payment import payment_bp
+from src.routes.performance import performance_bp
+from src.routes.localization import localization_bp
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -70,6 +73,9 @@ app.register_blueprint(chatbot_bp, url_prefix='/api/chatbot')
 app.register_blueprint(business_plan_bp, url_prefix='/api/business-plan')
 app.register_blueprint(user_bp, url_prefix='/api')
 app.register_blueprint(gemini_bp, url_prefix='/api/gemini')
+app.register_blueprint(payment_bp, url_prefix='/api/payment')
+app.register_blueprint(performance_bp, url_prefix='/api/performance')
+app.register_blueprint(localization_bp, url_prefix='/api/localization')
 
 # Routes alternatives pour les webhooks (sans le préfixe /api/chatbot)
 from src.routes.chatbot import whatsapp_webhook, telegram_webhook, messenger_webhook, whatsapp_gemini_webhook

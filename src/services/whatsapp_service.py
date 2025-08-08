@@ -27,7 +27,11 @@ class WhatsAppService:
     def send_message(self, to_number: str, message: str) -> bool:
         """Envoie un message WhatsApp via Twilio."""
         try:
-            if not self.client:
+            # Détecter les numéros de test
+            test_numbers = ['1234567890', '123456789', 'test', 'demo']
+            is_test_number = any(test_num in to_number for test_num in test_numbers)
+            
+            if not self.client or is_test_number:
                 logger.info(f"📤 [SIMULÉ] Message WhatsApp à {to_number}: {message[:100]}...")
                 return True
             
@@ -62,7 +66,11 @@ class WhatsAppService:
     def send_document(self, to_number: str, file_url: str, caption: str = "") -> bool:
         """Envoie un document WhatsApp via Twilio."""
         try:
-            if not self.client:
+            # Détecter les numéros de test
+            test_numbers = ['1234567890', '123456789', 'test', 'demo']
+            is_test_number = any(test_num in to_number for test_num in test_numbers)
+            
+            if not self.client or is_test_number:
                 logger.info(f"📎 [SIMULÉ] Document WhatsApp à {to_number}: {file_url}")
                 return True
             

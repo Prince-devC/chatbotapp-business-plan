@@ -1,10 +1,38 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "nixpacks"
+    "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "python src/main.py",
-    "healthcheckPath": "/health"
+    "numReplicas": 1,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  },
+  "environments": {
+    "production": {
+      "variables": {
+        "ENVIRONMENT": "production",
+        "DEBUG": "false",
+        "LOG_LEVEL": "INFO",
+        "DEFAULT_LANGUAGE": "fr",
+        "SUPPORTED_LANGUAGES": "fr,fon,yor,min,bar",
+        "CACHE_ENABLED": "true",
+        "ENABLE_METRICS": "true",
+        "DB_OPTIMIZATION_ENABLED": "true",
+        "ENABLE_ALERTS": "true"
+      }
+    },
+    "development": {
+      "variables": {
+        "ENVIRONMENT": "development",
+        "DEBUG": "true",
+        "LOG_LEVEL": "DEBUG",
+        "DEFAULT_LANGUAGE": "fr",
+        "SUPPORTED_LANGUAGES": "fr,fon,yor,min,bar",
+        "CACHE_ENABLED": "true",
+        "ENABLE_METRICS": "true",
+        "DB_OPTIMIZATION_ENABLED": "true"
+      }
+    }
   }
 } 

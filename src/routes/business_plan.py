@@ -1,12 +1,48 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 import os
 import json
 
 from src.models.database import db, BusinessPlan, BusinessPlanTemplate, User, Conversation, CompanyData
+from src.services.weather_service import WeatherService
+from src.services.enhanced_pdf_generator import EnhancedPDFGenerator
+from src.services.unit_converter import UnitConverter
+from src.models.payment_models import Subscription
+from src.routes.payment import get_package_features
+from src.services.pineapple_service import PineappleService
 
 business_plan_bp = Blueprint('business_plan', __name__)
+
+weather_service = WeatherService()
+pdf_generator = EnhancedPDFGenerator()
+pineapple_service = PineappleService()
+
+def check_user_subscription(user_id: int) -> dict:
+    """
+    Vérifie l'abonnement de l'utilisateur
+    
+    Args:
+        user_id (int): ID de l'utilisateur
+        
+    Returns:
+        dict: Fonctionnalités disponibles
+    """
+    try:
+        # Récupérer l'abonnement actif
+        subscription = Subscription.query.filter_by(
+            user_id=user_id,
+            status='active'
+        ).first()
+        
+        if subscription and subscription.is_active:
+            return get_package_features(subscription.package_id)
+        else:
+            return get_package_features('free')
+            
+    except Exception as e:
+        print(f"Erreur vérification abonnement: {e}")
+        return get_package_features('free')
 
 @business_plan_bp.route('/generate', methods=['POST'])
 @jwt_required()
@@ -51,6 +87,290 @@ def generate_business_plan():
         
     except Exception as e:
         return jsonify({'error': f'Erreur lors de la génération: {str(e)}'}), 500
+
+@business_plan_bp.route('/generate-enhanced', methods=['POST'])
+@jwt_required()
+def generate_enhanced_business_plan():
+    """
+    Génère un business plan enrichi avec météo et plan d'action
+    """
+    try:
+        data = request.get_json()
+        user_id = get_jwt_identity()
+        
+        # Récupérer l'utilisateur
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'Utilisateur non trouvé'}), 404
+        
+        # Vérifier l'abonnement
+        features = check_user_subscription(user_id)
+        
+        if not features.get('pdf_premium', False):
+            return jsonify({
+                'error': 'Fonctionnalité premium',
+                'message': 'Cette fonctionnalité nécessite un abonnement Premium ou Coopérative',
+                'upgrade_required': True
+            }), 403
+        
+        # Récupérer les données météo
+        weather_data = None
+        if user.zone_agro_ecologique:
+            weather_data = weather_service.get_agro_advice(
+                user.zone_agro_ecologique, 
+                user.primary_culture or 'mais'
+            )
+        
+        # Préparer les données utilisateur
+        user_data = {
+            'username': user.username or f"{user.first_name} {user.last_name}",
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'user_type': user.user_type,
+            'zone_agro_ecologique': user.zone_agro_ecologique,
+            'farming_objective': user.farming_objective,
+            'land_area': user.land_area,
+            'land_unit': user.land_unit,
+            'farming_experience': user.farming_experience,
+            'primary_culture': user.primary_culture,
+            'cooperative_name': user.cooperative_name,
+            'cooperative_members': user.cooperative_members,
+            'cooperative_commune': user.cooperative_commune
+        }
+        
+        # Convertir les unités si nécessaire
+        if user.land_area and user.land_unit:
+            standard_area = UnitConverter.get_standard_area(user.land_area, user.land_unit)
+            user_data['land_area_ha'] = standard_area['ha']
+            user_data['land_area_m2'] = standard_area['m2']
+        
+        # Données business de base
+        business_data = {
+            'operating_costs': 150000,  # À calculer selon la surface
+            'fixed_costs': 50000,
+            'expected_revenue': 300000,
+            'gross_margin': 150000,
+            'net_result': 100000
+        }
+        
+        # Générer le PDF enrichi
+        pdf_path = pdf_generator.generate_business_plan_pdf(
+            user_data=user_data,
+            weather_data=weather_data,
+            business_data=business_data
+        )
+        
+        # Créer l'entrée en base
+        business_plan = BusinessPlan(
+            user_id=user_id,
+            company_name=f"Exploitation {user_data['username']}",
+            generated_content=json.dumps({
+                'user_data': user_data,
+                'weather_data': weather_data,
+                'business_data': business_data
+            }),
+            variables_used=json.dumps(data),
+            file_path=pdf_path,
+            file_format='pdf',
+            status='generated'
+        )
+        
+        db.session.add(business_plan)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Business plan enrichi généré avec succès',
+            'file_path': pdf_path,
+            'business_plan_id': business_plan.id,
+            'weather_data': weather_data
+        })
+        
+    except Exception as e:
+        print(f"Erreur génération business plan enrichi: {e}")
+        return jsonify({'error': 'Erreur lors de la génération'}), 500
+
+@business_plan_bp.route('/pineapple/generate', methods=['POST'])
+@jwt_required()
+def generate_pineapple_business_plan():
+    """
+    Génère un business plan ananas
+    """
+    try:
+        user_id = get_jwt_identity()
+        data = request.get_json()
+        
+        # Récupérer l'utilisateur
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'Utilisateur non trouvé'}), 404
+        
+        # Vérifier l'abonnement
+        features = check_user_subscription(user_id)
+        
+        if not features.get('business_plan_basic', False):
+            return jsonify({
+                'error': 'Fonctionnalité premium',
+                'message': 'Cette fonctionnalité nécessite un abonnement',
+                'upgrade_required': True
+            }), 403
+        
+        # Préparer les données utilisateur
+        user_data = {
+            'zone_agro_ecologique': user.zone_agro_ecologique or 'Zone des terres de barre',
+            'land_area': user.land_area or 1.0,
+            'farming_experience': user.farming_experience or 'Débutant',
+            'farming_objective': user.farming_objective or 'Commercial'
+        }
+        
+        # Récupérer la variété
+        variety_id = data.get('variety_id', 1)
+        
+        # Générer le business plan ananas
+        business_plan = pineapple_service.generate_pineapple_business_plan(user_data, variety_id)
+        
+        if not business_plan:
+            return jsonify({'error': 'Erreur lors de la génération du business plan ananas'}), 500
+        
+        # Générer le PDF si demandé
+        pdf_path = None
+        if data.get('generate_pdf', False) and features.get('pdf_premium', False):
+            try:
+                pdf_generator = EnhancedPDFGenerator()
+                pdf_path = pdf_generator.generate_pineapple_business_plan_pdf(business_plan)
+            except Exception as e:
+                print(f"Erreur génération PDF ananas: {e}")
+        
+        return jsonify({
+            'success': True,
+            'business_plan': business_plan,
+            'pdf_path': pdf_path
+        })
+        
+    except Exception as e:
+        print(f"Erreur génération business plan ananas: {e}")
+        return jsonify({'error': 'Erreur lors de la génération'}), 500
+
+@business_plan_bp.route('/pineapple/varieties', methods=['GET'])
+def get_pineapple_varieties():
+    """
+    Récupère les variétés d'ananas disponibles
+    """
+    try:
+        zone = request.args.get('zone')
+        varieties = pineapple_service.get_varieties(zone)
+        
+        return jsonify({
+            'success': True,
+            'varieties': varieties
+        })
+        
+    except Exception as e:
+        print(f"Erreur récupération variétés ananas: {e}")
+        return jsonify({'error': 'Erreur lors de la récupération'}), 500
+
+@business_plan_bp.route('/pineapple/techniques', methods=['GET'])
+def get_pineapple_techniques():
+    """
+    Récupère les techniques culturales ananas
+    """
+    try:
+        category = request.args.get('category')
+        zone = request.args.get('zone')
+        
+        techniques = pineapple_service.get_techniques(category, zone)
+        
+        return jsonify({
+            'success': True,
+            'techniques': techniques
+        })
+        
+    except Exception as e:
+        print(f"Erreur récupération techniques ananas: {e}")
+        return jsonify({'error': 'Erreur lors de la récupération'}), 500
+
+@business_plan_bp.route('/pineapple/diseases', methods=['GET'])
+def get_pineapple_diseases():
+    """
+    Récupère les maladies de l'ananas
+    """
+    try:
+        severity = request.args.get('severity')
+        diseases = pineapple_service.get_diseases(severity)
+        
+        return jsonify({
+            'success': True,
+            'diseases': diseases
+        })
+        
+    except Exception as e:
+        print(f"Erreur récupération maladies ananas: {e}")
+        return jsonify({'error': 'Erreur lors de la récupération'}), 500
+
+@business_plan_bp.route('/pineapple/advice', methods=['GET'])
+def get_pineapple_advice():
+    """
+    Récupère les conseils ananas
+    """
+    try:
+        zone = request.args.get('zone', 'Zone des terres de barre')
+        variety = request.args.get('variety')
+        season = request.args.get('season')
+        
+        advice = pineapple_service.get_pineapple_advice(zone, variety, season)
+        
+        return jsonify({
+            'success': True,
+            'advice': advice
+        })
+        
+    except Exception as e:
+        print(f"Erreur récupération conseils ananas: {e}")
+        return jsonify({'error': 'Erreur lors de la récupération'}), 500
+
+@business_plan_bp.route('/pineapple/market-data', methods=['GET'])
+def get_pineapple_market_data():
+    """
+    Récupère les données de marché ananas
+    """
+    try:
+        zone = request.args.get('zone', 'Zone des terres de barre')
+        variety = request.args.get('variety')
+        month = request.args.get('month')
+        
+        if month:
+            month = int(month)
+        
+        market_data = pineapple_service.get_market_data(zone, variety, month)
+        
+        return jsonify({
+            'success': True,
+            'market_data': market_data
+        })
+        
+    except Exception as e:
+        print(f"Erreur récupération données marché ananas: {e}")
+        return jsonify({'error': 'Erreur lors de la récupération'}), 500
+
+@business_plan_bp.route('/pineapple/economic-data', methods=['GET'])
+def get_pineapple_economic_data():
+    """
+    Récupère les données économiques ananas
+    """
+    try:
+        zone = request.args.get('zone', 'Zone des terres de barre')
+        variety = request.args.get('variety')
+        
+        economic_data = pineapple_service.get_economic_data(zone, variety)
+        
+        return jsonify({
+            'success': True,
+            'economic_data': economic_data
+        })
+        
+    except Exception as e:
+        print(f"Erreur récupération données économiques ananas: {e}")
+        return jsonify({'error': 'Erreur lors de la récupération'}), 500
 
 @business_plan_bp.route('/export/<int:business_plan_id>', methods=['POST'])
 @jwt_required()
@@ -177,6 +497,97 @@ def suggest_company_data():
         'suggestions': unique_suggestions[:5],
         'count': len(unique_suggestions)
     }), 200
+
+@business_plan_bp.route('/weather/<zone>', methods=['GET'])
+def get_weather_data(zone):
+    """
+    Récupère les données météo pour une zone
+    """
+    try:
+        weather_data = weather_service.get_current_weather(zone)
+        forecast_data = weather_service.get_forecast(zone, 7)
+        agro_advice = weather_service.get_agro_advice(zone, 'mais')
+        
+        return jsonify({
+            'current_weather': weather_data,
+            'forecast': forecast_data,
+            'agro_advice': agro_advice
+        })
+        
+    except Exception as e:
+        print(f"Erreur récupération météo: {e}")
+        return jsonify({'error': 'Erreur lors de la récupération météo'}), 500
+
+@business_plan_bp.route('/action-plan/<user_id>', methods=['GET'])
+def get_action_plan(user_id):
+    """
+    Génère un plan d'action personnalisé
+    """
+    try:
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'Utilisateur non trouvé'}), 404
+        
+        # Récupérer les données météo
+        weather_data = None
+        if user.zone_agro_ecologique:
+            weather_data = weather_service.get_agro_advice(
+                user.zone_agro_ecologique, 
+                user.primary_culture or 'mais'
+            )
+        
+        # Générer le plan d'action
+        current_month = datetime.now().month
+        culture = user.primary_culture or 'mais'
+        
+        if culture.lower() == 'mais':
+            plan_30 = pdf_generator._get_mais_30_days_plan(current_month, weather_data)
+            plan_60 = pdf_generator._get_mais_60_days_plan(current_month, weather_data)
+            plan_90 = pdf_generator._get_mais_90_days_plan(current_month, weather_data)
+        else:
+            plan_30 = ["Préparation", "Planification", "Organisation"]
+            plan_60 = ["Exécution", "Suivi", "Ajustements"]
+            plan_90 = ["Évaluation", "Amélioration", "Préparation suivante"]
+        
+        action_plan = {
+            'user_info': {
+                'name': f"{user.first_name} {user.last_name}",
+                'zone': user.zone_agro_ecologique,
+                'culture': culture,
+                'surface': f"{user.land_area} {user.land_unit}" if user.land_area else "Non spécifiée"
+            },
+            'weather_data': weather_data,
+            'action_plan': {
+                '30_days': plan_30,
+                '60_days': plan_60,
+                '90_days': plan_90
+            }
+        }
+        
+        return jsonify(action_plan)
+        
+    except Exception as e:
+        print(f"Erreur génération plan d'action: {e}")
+        return jsonify({'error': 'Erreur lors de la generation du plan d\'action'}), 500
+
+@business_plan_bp.route('/features', methods=['GET'])
+@jwt_required()
+def get_available_features():
+    """
+    Récupère les fonctionnalités disponibles pour l'utilisateur
+    """
+    try:
+        user_id = get_jwt_identity()
+        features = check_user_subscription(user_id)
+        
+        return jsonify({
+            'success': True,
+            'features': features
+        })
+        
+    except Exception as e:
+        print(f"Erreur récupération fonctionnalités: {e}")
+        return jsonify({'error': 'Erreur lors de la récupération'}), 500
 
 def generate_business_plan_content(template_content, variables, company_name):
     """Générer le contenu du business plan à partir du template et des variables"""

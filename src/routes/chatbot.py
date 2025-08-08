@@ -3,17 +3,28 @@ from datetime import datetime
 import uuid
 import os
 import requests
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
 import logging
 from src.services.gemini_service import GeminiAnalysisService
 from src.services.document_generator import DocumentGenerator
 from src.models.database import db, User, Conversation, Message, WebhookLog, BusinessPlanTemplate, get_db_connection
+from src.services.disease_detection import DiseaseDetectionService
+from src.services.enhanced_pdf_generator import EnhancedPDFGenerator
+import base64
+import io
+import json
+from src.models.diagnosis_log import DiagnosisLog
+from src.services.conversational_ai import ConversationalAI
 
 logger = logging.getLogger(__name__)
 
 chatbot_bp = Blueprint('chatbot', __name__)
+
+disease_service = DiseaseDetectionService()
+pdf_generator = EnhancedPDFGenerator()
+conversational_ai = ConversationalAI()
 
 def send_telegram_message(chat_id: str, text: str) -> Optional[Dict[str, Any]]:
     """Envoyer un message via l'API Telegram"""
@@ -132,6 +143,97 @@ def process_bot_response(conversation: Conversation, message: Message) -> None:
     except Exception as e:
         db.session.rollback()
         print(f"Erreur lors du traitement de la réponse du bot: {str(e)}")
+
+def process_ai_actions(actions: List[str], user_id: str, platform: str, platform_user_id: str):
+    """
+    Traite les actions suggérées par l'IA
+    
+    Args:
+        actions (list): Liste des actions à effectuer
+        user_id (str): ID de l'utilisateur
+        platform (str): Plateforme (whatsapp, telegram)
+        platform_user_id (str): ID utilisateur sur la plateforme
+    """
+    try:
+        for action in actions:
+            if action == 'create_business_plan':
+                # Suggérer la création d'un business plan
+                send_message(platform, platform_user_id,
+                    "📊 **Créer un Business Plan**\n\n"
+                    "Je peux vous aider à créer un business plan agricole complet !\n\n"
+                    "Pour commencer, dites-moi :\n"
+                    "• Votre zone agro-écologique\n"
+                    "• Votre culture principale\n"
+                    "• La superficie de votre exploitation\n\n"
+                    "Ou tapez 'business plan' pour commencer !"
+                )
+                
+            elif action == 'get_weather':
+                # Suggérer les informations météo
+                send_message(platform, platform_user_id,
+                    "🌦️ **Informations Météo**\n\n"
+                    "Je peux vous fournir des prévisions météo et des conseils agro-météo !\n\n"
+                    "Dites-moi votre zone agro-écologique pour des conseils personnalisés.\n\n"
+                    "Ou tapez 'météo' pour commencer !"
+                )
+                
+            elif action == 'request_photo':
+                # Demander une photo pour diagnostic
+                send_message(platform, platform_user_id,
+                    "🔍 **Diagnostic Photo**\n\n"
+                    "Pour diagnostiquer les maladies de vos plantes, envoyez-moi une photo claire !\n\n"
+                    "**Conseils pour une bonne photo :**\n"
+                    "• Photo rapprochée des symptômes\n"
+                    "• Bonne luminosité\n"
+                    "• Incluez feuilles, tiges, racines\n\n"
+                    "Envoyez votre photo maintenant !"
+                )
+                
+            elif action == 'show_packages':
+                # Afficher les packages disponibles
+                send_message(platform, platform_user_id,
+                    "💳 **Nos Packages AgroBizChat**\n\n"
+                    "🆓 **Gratuit**\n"
+                    "• Business plans basiques\n"
+                    "• Météo de base\n"
+                    "• Support chat\n\n"
+                    "💳 **Basique (500 FCFA)**\n"
+                    "• PDF premium inclus\n"
+                    "• Conseils personnalisés\n\n"
+                    "⭐ **Premium (1500 FCFA)**\n"
+                    "• Diagnostic photo inclus\n"
+                    "• Rapports détaillés\n\n"
+                    "👥 **Coopérative (3000 FCFA)**\n"
+                    "• Fonctionnalités groupe\n"
+                    "• Statistiques partagées\n\n"
+                    "Tapez 'packages' pour plus d'informations !"
+                )
+                
+            elif action == 'show_features':
+                # Afficher les fonctionnalités
+                send_message(platform, platform_user_id,
+                    "🚀 **Mes Fonctionnalités**\n\n"
+                    "📊 **Business Plans**\n"
+                    "• Création de plans d'affaires\n"
+                    "• Études de faisabilité\n"
+                    "• Analyses économiques\n\n"
+                    "🌦️ **Météo & Conseils**\n"
+                    "• Prévisions météo par zone\n"
+                    "• Conseils agro-météo\n"
+                    "• Alertes climatiques\n\n"
+                    "🔍 **Diagnostic Photo**\n"
+                    "• Identification des maladies\n"
+                    "• Conseils de traitement\n"
+                    "• Prévention des problèmes\n\n"
+                    "💳 **Packages Premium**\n"
+                    "• Fonctionnalités avancées\n"
+                    "• PDF détaillés\n"
+                    "• Support prioritaire\n\n"
+                    "Que souhaitez-vous explorer ?"
+                )
+        
+    except Exception as e:
+        print(f"Erreur traitement actions IA: {e}")
 
 @chatbot_bp.route('/webhook/telegram', methods=['POST'])
 def telegram_webhook():
@@ -286,14 +388,29 @@ def messenger_webhook():
             db.session.commit()
         return jsonify({'error': str(e)}), 500
 
-@chatbot_bp.route('/webhook/whatsapp', methods=['POST'])
+# @chatbot_bp.route('/webhook/whatsapp', methods=['POST'])  # SUPPRIMÉE - Route enregistrée directement dans main.py
 def whatsapp_webhook():
     """Webhook pour recevoir les messages Twilio WhatsApp"""
     log = None
     
     try:
-        # Validate Twilio request
-        form_data = request.form.to_dict()
+        # Gérer les deux formats possibles : form data (Twilio) et JSON (WhatsApp Business API)
+        if request.content_type and 'application/json' in request.content_type:
+            # Format JSON (WhatsApp Business API)
+            data = request.get_json()
+            if not data:
+                return jsonify({'error': 'No JSON data received'}), 400
+        else:
+            # Format form data (Twilio) ou autre
+            data = request.form.to_dict()
+            if not data:
+                # Essayer de récupérer les données JSON si pas de form data
+                try:
+                    data = request.get_json()
+                    if not data:
+                        return jsonify({'error': 'No data received'}), 400
+                except:
+                    return jsonify({'error': 'No form data or JSON data received'}), 400
         
         # Logger le webhook
         log = WebhookLog(
@@ -302,17 +419,36 @@ def whatsapp_webhook():
             processed=False,
             error_message=None
         )
-        log.set_webhook_data(form_data)
+        log.set_webhook_data(data)
         db.session.add(log)
         db.session.flush()
         
-        # Extraire les données du message
-        message_sid = form_data.get('MessageSid')
-        from_number = form_data.get('From', '').replace('whatsapp:', '')
-        body = form_data.get('Body', '')
+        # Extraire les données du message selon le format
+        if 'Body' in data and 'From' in data:
+            # Format Twilio
+            message_sid = data.get('MessageSid')
+            from_number = data.get('From', '').replace('whatsapp:', '')
+            body = data.get('Body', '')
+        elif 'messages' in data:
+            # Format WhatsApp Business API
+            messages = data.get('messages', [])
+            if messages:
+                message_data = messages[0]
+                message_sid = message_data.get('id')
+                from_number = message_data.get('from', '')
+                body = message_data.get('text', {}).get('body', '')
+            else:
+                message_sid = None
+                from_number = ''
+                body = ''
+        else:
+            # Format personnalisé
+            message_sid = data.get('MessageSid') or data.get('id')
+            from_number = data.get('From') or data.get('from', '')
+            body = data.get('Body') or data.get('body', '')
         
-        if not all([message_sid, from_number]):
-            raise ValueError('Missing required WhatsApp message data')
+        if not from_number:
+            raise ValueError('Missing required WhatsApp message data: from_number')
         
         # Créer ou récupérer l'utilisateur
         user = get_or_create_user(
@@ -333,12 +469,12 @@ def whatsapp_webhook():
         )
         
         # Gérer les médias
-        if 'MediaUrl0' in form_data:
+        if 'MediaUrl0' in data:
             message.message_type = 'media'
             media_data = {
-                'url': form_data.get('MediaUrl0'),
-                'content_type': form_data.get('MediaContentType0'),
-                'sid': form_data.get('MediaSid0')
+                'url': data.get('MediaUrl0'),
+                'content_type': data.get('MediaContentType0'),
+                'sid': data.get('MediaSid0')
             }
             message.set_metadata(media_data)
         
@@ -700,11 +836,11 @@ def process_messenger_message(messaging_event):
         db.session.rollback()
         raise
 
-# Route alternative pour le webhook WhatsApp (compatibilité)
-@chatbot_bp.route('/webhook/whatsapp', methods=['POST'])
-def whatsapp_webhook_alt():
-    """Route alternative pour le webhook WhatsApp"""
-    return whatsapp_webhook()
+# Route alternative pour le webhook WhatsApp (compatibilité) - SUPPRIMÉE pour éviter les conflits
+# @chatbot_bp.route('/webhook/whatsapp', methods=['POST'])
+# def whatsapp_webhook_alt():
+#     """Route alternative pour le webhook WhatsApp"""
+#     return whatsapp_webhook()
 
 def get_all_templates():
     """Récupère tous les templates de la base de données."""
@@ -1160,3 +1296,333 @@ def test_gemini_generation():
             'error': str(e),
             'message': 'Erreur critique lors du test'
         }), 500
+
+def handle_text_message(platform: str, user_id: str, text: str):
+    """
+    Gère le traitement d'un message texte avec IA conversationnelle
+    """
+    try:
+        # Créer ou récupérer l'utilisateur
+        user = get_or_create_user(
+            platform=platform,
+            platform_user_id=user_id
+        )
+        
+        # Créer ou récupérer la conversation
+        conversation = get_or_create_conversation(user.id, user_id)
+        
+        # Créer le message utilisateur
+        message = Message(
+            conversation_id=conversation.id,
+            sender='user',
+            message_type='text',
+            content=text
+        )
+        
+        db.session.add(message)
+        db.session.commit()
+        
+        # Traiter avec l'IA conversationnelle
+        process_bot_response(conversation, message)
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error processing text message: {str(e)}")
+        raise
+
+def handle_photo_message(platform: str, user_id: str, photo_data: bytes, caption: str = None):
+    """
+    Gère la réception d'une photo pour diagnostic de maladie
+    
+    Args:
+        platform (str): Plateforme (whatsapp, telegram)
+        user_id (str): ID de l'utilisateur
+        photo_data (bytes): Données de la photo
+        caption (str): Légende optionnelle
+    """
+    try:
+        # Récupérer l'utilisateur
+        user = User.query.filter_by(
+            platform=platform,
+            platform_user_id=user_id
+        ).first()
+        
+        if not user:
+            # Créer un utilisateur temporaire si nécessaire
+            user = User(
+                platform=platform,
+                platform_user_id=user_id,
+                username=f"User_{user_id}",
+                is_active=True
+            )
+            db.session.add(user)
+            db.session.commit()
+        
+        # Diagnostic de la maladie
+        culture = user.primary_culture or 'mais'
+        diagnosis = disease_service.detect_disease(photo_data, culture)
+        
+        if diagnosis:
+            # Créer un message de diagnostic
+            diagnosis_message = f"""
+🔍 **Diagnostic de maladie détecté**
+
+🌾 **Culture:** {diagnosis['culture'].title()}
+🦠 **Maladie:** {diagnosis['disease_name']}
+⚠️ **Sévérité:** {diagnosis['severity']}
+📊 **Confiance:** {diagnosis['confidence']:.1%}
+
+**Symptômes observés:**
+"""
+            for symptom in diagnosis.get('symptoms', []):
+                diagnosis_message += f"• {symptom}\n"
+            
+            diagnosis_message += "\n**Traitements recommandés:**\n"
+            for treatment in diagnosis.get('treatments', []):
+                diagnosis_message += f"• {treatment['name']}: {treatment['description']}\n"
+            
+            diagnosis_message += "\n**Actions immédiates:**\n"
+            for action in diagnosis.get('prevention', []):
+                diagnosis_message += f"• {action}\n"
+            
+            # Envoyer le message de diagnostic
+            send_message(platform, user_id, diagnosis_message)
+            
+            # Générer PDF diagnostic (premium)
+            pdf_path = generate_diagnosis_pdf(user, diagnosis, photo_data)
+            
+            if pdf_path:
+                # Envoyer le PDF
+                send_document(platform, user_id, pdf_path, "Diagnostic_AgroBizChat.pdf")
+                
+                # Message de confirmation
+                send_message(platform, user_id, 
+                    "📄 **PDF diagnostic généré !**\n"
+                    "Le rapport complet a été envoyé avec les détails du diagnostic, "
+                    "les traitements recommandés et les mesures de prévention.\n\n"
+                    "💡 **Conseil:** Consultez un expert agricole pour confirmation."
+                )
+            else:
+                send_message(platform, user_id, 
+                    "❌ Erreur lors de la génération du PDF diagnostic.\n"
+                    "Le diagnostic textuel reste disponible ci-dessus."
+                )
+        else:
+            send_message(platform, user_id,
+                "❌ **Diagnostic non concluant**\n\n"
+                "Je n'ai pas pu identifier clairement une maladie sur cette photo.\n\n"
+                "**Suggestions:**\n"
+                "• Prenez une photo plus claire et rapprochée\n"
+                "• Assurez-vous que la photo montre bien les symptômes\n"
+                "• Essayez sous différents angles\n"
+                "• Consultez un expert agricole pour un diagnostic précis"
+            )
+        
+        # Enregistrer l'interaction
+        log_diagnosis_interaction(user.id, diagnosis, photo_data)
+        
+    except Exception as e:
+        print(f"Erreur diagnostic photo: {e}")
+        send_message(platform, user_id,
+            "❌ **Erreur technique**\n\n"
+            "Une erreur s'est produite lors du diagnostic.\n"
+            "Veuillez réessayer ou contacter le support."
+        )
+
+def generate_diagnosis_pdf(user: User, diagnosis: Dict, photo_data: bytes) -> Optional[str]:
+    """
+    Génère un PDF de diagnostic complet
+    
+    Args:
+        user (User): Utilisateur
+        diagnosis (dict): Résultats du diagnostic
+        photo_data (bytes): Données de la photo
+        
+    Returns:
+        str: Chemin du PDF généré ou None si erreur
+    """
+    try:
+        # Préparer les données pour le PDF
+        diagnosis_data = {
+            'user_info': {
+                'name': f"{user.first_name or ''} {user.last_name or ''}".strip() or user.username,
+                'zone': user.zone_agro_ecologique or 'Non spécifiée',
+                'culture': diagnosis['culture'],
+                'date': datetime.now().strftime('%d/%m/%Y à %H:%M')
+            },
+            'diagnosis': diagnosis,
+            'photo_data': base64.b64encode(photo_data).decode('utf-8')
+        }
+        
+        # Générer le PDF
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        pdf_path = f"generated_business_plans/diagnosis_{user.id}_{timestamp}.pdf"
+        
+        # Créer le dossier si nécessaire
+        os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+        
+        # Générer le PDF avec le service existant
+        pdf_generator = EnhancedPDFGenerator()
+        pdf_path = pdf_generator.generate_diagnosis_pdf(diagnosis_data, pdf_path)
+        
+        return pdf_path
+        
+    except Exception as e:
+        print(f"Erreur génération PDF diagnostic: {e}")
+        return None
+
+def log_diagnosis_interaction(user_id: int, diagnosis: Dict, photo_data: bytes):
+    """
+    Enregistre l'interaction de diagnostic en base
+    
+    Args:
+        user_id (int): ID de l'utilisateur
+        diagnosis (dict): Résultats du diagnostic
+        photo_data (bytes): Données de la photo
+    """
+    try:
+        # Créer une entrée de diagnostic
+        diagnosis_log = DiagnosisLog(
+            user_id=user_id,
+            disease_name=diagnosis.get('disease_name', 'Non identifiée'),
+            confidence=diagnosis.get('confidence', 0),
+            severity=diagnosis.get('severity', 'Inconnue'),
+            culture=diagnosis.get('culture', 'mais'),
+            photo_data=base64.b64encode(photo_data).decode('utf-8'),
+            diagnosis_data=json.dumps(diagnosis),
+            created_at=datetime.now()
+        )
+        
+        db.session.add(diagnosis_log)
+        db.session.commit()
+        
+    except Exception as e:
+        print(f"Erreur log diagnostic: {e}")
+
+# Modifier la fonction whatsapp_webhook pour gérer les photos
+# Fonction whatsapp_webhook dupliquée supprimée - utilise la version principale corrigée
+# def whatsapp_webhook():
+#     """Webhook WhatsApp avec support photos"""
+#     try:
+#         data = request.get_json()
+#         
+#         if 'entry' in data and len(data['entry']) > 0:
+#             entry = data['entry'][0]
+#             
+#             if 'changes' in entry and len(entry['changes']) > 0:
+#                 change = entry['changes'][0]
+#                 
+#                 if 'value' in change and 'messages' in change['value']:
+#                     messages = change['value']['messages']
+#                     
+#                     for message in messages:
+#                         message_type = message.get('type')
+#                         user_id = message.get('from')
+#                         
+#                         if message_type == 'text':
+#                             # Traitement texte existant
+#                             handle_text_message('whatsapp', user_id, message.get('text', {}).get('body', ''))
+#                         
+#                         elif message_type == 'image':
+#                             # Nouveau: Gestion des photos
+#                             image_data = message.get('image', {})
+#                             image_url = image_data.get('link')
+#                             caption = image_data.get('caption', '')
+#                             
+#                             if image_url:
+#                                 # Télécharger l'image
+#                                 response = requests.get(image_url)
+#                                 if response.status_code == 200:
+#                                     photo_data = response.content
+#                                     handle_photo_message('whatsapp', user_id, photo_data, caption)
+#                                 else:
+#                                     send_message('whatsapp', user_id, 
+#                                         "❌ Erreur lors du téléchargement de l'image.\n"
+#                                         "Veuillez réessayer."
+#                                     )
+#                             else:
+#                                 send_message('whatsapp', user_id,
+#                                     "❌ Impossible de récupérer l'image.\n"
+#                                     "Veuillez réessayer."
+#                                 )
+#         
+#         return jsonify({'status': 'success'}), 200
+#         
+#     except Exception as e:
+#         print(f"Erreur webhook WhatsApp: {e}")
+#         return jsonify({'error': str(e)}), 500
+
+# Modifier la fonction telegram_webhook pour gérer les photos
+def telegram_webhook():
+    """Webhook Telegram avec support photos"""
+    try:
+        data = request.get_json()
+        
+        if 'message' in data:
+            message = data['message']
+            user_id = str(message.get('from', {}).get('id'))
+            message_type = message.get('type', 'text')
+            
+            if message_type == 'text':
+                # Traitement texte existant
+                text = message.get('text', '')
+                handle_text_message('telegram', user_id, text)
+            
+            elif message_type == 'photo':
+                # Nouveau: Gestion des photos
+                photos = message.get('photo', [])
+                caption = message.get('caption', '')
+                
+                if photos:
+                    # Prendre la plus grande photo
+                    largest_photo = max(photos, key=lambda p: p.get('file_size', 0))
+                    file_id = largest_photo.get('file_id')
+                    
+                    if file_id:
+                        # Récupérer le fichier via l'API Telegram
+                        bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+                        if bot_token:
+                            file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+                            file_response = requests.get(file_url)
+                            
+                            if file_response.status_code == 200:
+                                file_data = file_response.json()
+                                if file_data.get('ok'):
+                                    file_path = file_data['result']['file_path']
+                                    download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+                                    
+                                    photo_response = requests.get(download_url)
+                                    if photo_response.status_code == 200:
+                                        photo_data = photo_response.content
+                                        handle_photo_message('telegram', user_id, photo_data, caption)
+                                    else:
+                                        send_message('telegram', user_id,
+                                            "❌ Erreur lors du téléchargement de l'image.\n"
+                                            "Veuillez réessayer."
+                                        )
+                                else:
+                                    send_message('telegram', user_id,
+                                        "❌ Impossible de récupérer l'image.\n"
+                                        "Veuillez réessayer."
+                                    )
+                            else:
+                                send_message('telegram', user_id,
+                                    "❌ Erreur de configuration Telegram.\n"
+                                    "Contactez l'administrateur."
+                                )
+                        else:
+                            send_message('telegram', user_id,
+                                "❌ Configuration Telegram manquante.\n"
+                                "Contactez l'administrateur."
+                            )
+                    else:
+                        send_message('telegram', user_id,
+                            "❌ Impossible de traiter l'image.\n"
+                            "Veuillez réessayer."
+                        )
+        
+        return jsonify({'status': 'success'}), 200
+        
+    except Exception as e:
+        print(f"Erreur webhook Telegram: {e}")
+        return jsonify({'error': str(e)}), 500

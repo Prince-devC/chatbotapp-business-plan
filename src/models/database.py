@@ -421,3 +421,19 @@ def get_db_connection():
         print(f"Erreur connexion base de données: {str(e)}")
         raise
 
+# Configuration pour les plateformes cloud
+def get_database_url():
+    """Récupère l'URL de base de données avec support des plateformes cloud"""
+    database_url = os.getenv('DATABASE_URL')
+    
+    if database_url:
+        # Heroku et autres plateformes utilisent postgres:// qui n'est plus supporté
+        if database_url.startswith('postgres://'):
+            database_url = database_url.replace('postgres://', 'postgresql://', 1)
+        
+        # Render et autres plateformes modernes utilisent postgresql://
+        return database_url
+    
+    # Fallback local
+    return 'sqlite:///app.db'
+

@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: agrobiz-chatbot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn src.main:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.16
+      - key: FLASK_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: agrobiz-db
+          property: connectionString
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+
+databases:
+  - name: agrobiz-db
+    plan: free
+    databaseName: agrobiz
+    user: agrobiz_user 
